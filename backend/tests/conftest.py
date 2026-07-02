@@ -26,6 +26,10 @@ async def app_client(tmp_path, monkeypatch):
 
     await asyncio.to_thread(_run_migrations_sync)
 
+    from app.seed.load_srd import seed_srd
+
+    await seed_srd()
+
     app = create_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:

@@ -2,11 +2,13 @@ import { Link, useParams } from 'react-router-dom'
 import { useCampaign, useMembers } from '../api/hooks'
 import { SceneList } from '../components/SceneList'
 import { CharacterList } from '../components/CharacterList'
+import { useLiveCache } from '../ws/useLiveCache'
 
 export function LobbyPage() {
   const { cid } = useParams() as { cid: string }
   const { data: campaign, isLoading } = useCampaign(cid)
   const { data: members } = useMembers(cid)
+  useLiveCache(cid)
 
   if (isLoading) return <div className="page-pad muted">Loading…</div>
   if (!campaign) return <div className="page-pad error-text">Campaign not found.</div>

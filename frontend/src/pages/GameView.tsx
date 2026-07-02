@@ -8,6 +8,7 @@ import { EVT, WsEvent } from '../types/events'
 import { useCampaignSocket } from '../ws/useCampaignSocket'
 import { MessageRow } from '../components/MessageRow'
 import { GameRail } from '../components/GameRail'
+import { useLiveCache } from '../ws/useLiveCache'
 
 interface StreamBuffer {
   content: string
@@ -20,6 +21,7 @@ export function GameView() {
   const [streams, setStreams] = useState<Record<string, StreamBuffer>>({})
   const [aiStatus, setAiStatus] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
+  useLiveCache(cid)
 
   const { data: scene } = useQuery<Scene>({
     queryKey: ['scenes', sid],
