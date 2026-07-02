@@ -3,6 +3,7 @@ import { AppLayout } from './pages/AppLayout'
 import { LoginPage } from './pages/LoginPage'
 import { CampaignsPage } from './pages/CampaignsPage'
 import { LobbyPage } from './pages/LobbyPage'
+import { GameView } from './pages/GameView'
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage mode="login" /> },
@@ -14,6 +15,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/campaigns" replace /> },
       { path: 'campaigns', element: <CampaignsPage /> },
       { path: 'campaigns/:cid', element: <LobbyPage /> },
+      { path: 'campaigns/:cid/scenes/:sid', element: <GameView /> },
       { path: '*', element: <div className="page-pad">Coming soon…</div> },
     ],
   },
