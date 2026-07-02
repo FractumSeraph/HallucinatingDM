@@ -1,0 +1,91 @@
+/* HallucinatingDM — dark-fantasy base theme */
+
+:root {
+  --bg: #16121f;
+  --bg-raised: #201a2e;
+  --bg-inset: #100d18;
+  --border: #372c4e;
+  --text: #e8e2f4;
+  --text-dim: #a79bc4;
+  --accent: #b48cff;
+  --accent-strong: #8d5cf6;
+  --danger: #ff6b7a;
+  --success: #6bdc9c;
+  --warning: #ffc857;
+  --gold: #e0b45c;
+  --radius: 10px;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: Georgia, 'Times New Roman', serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.app-shell { height: 100%; display: flex; flex-direction: column; }
+.page-pad { padding: 2rem; }
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button, .btn {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
+
+.btn-danger { border-color: var(--danger); color: var(--danger); }
+
+input, textarea, select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  width: 100%;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.muted { color: var(--text-dim); }
+.error-text { color: var(--danger); }
+
+.row { display: flex; gap: 0.75rem; align-items: center; }
+.col { display: flex; flex-direction: column; gap: 0.75rem; }
+.grow { flex: 1; }

@@ -1,0 +1,39 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+
+  # Optional local LLM. Enable with:  docker compose --profile ollama up
+  # Skip this profile if you point LLM_BASE_URL at LM Studio, vLLM,
+  # OpenRouter, OpenAI, etc.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+
+  # One-shot helper that pulls the default models into the ollama volume.
+  ollama-init:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: >
+      sh -c "sleep 3 && ollama pull llama3.1 && ollama pull nomic-embed-text"
+    restart: "no"
+
+volumes:
+  ollama:
