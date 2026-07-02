@@ -1,5 +1,8 @@
 from fastapi import APIRouter
 
-api_router = APIRouter()
+from app.api.auth import router as auth_router
+from app.api.campaigns import router as campaigns_router
 
-# Routers are registered here as phases land.
+api_router = APIRouter()
+api_router.include_router(auth_router)
+api_router.include_router(campaigns_router)
