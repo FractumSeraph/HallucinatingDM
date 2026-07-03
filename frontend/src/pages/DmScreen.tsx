@@ -37,6 +37,10 @@ export function DmScreen() {
           <SceneModePanel campaignId={cid} />
         </section>
         <section className="card">
+          <h3>Pinned facts</h3>
+          <PinnedFactsPanel campaignId={cid} />
+        </section>
+        <section className="card">
           <h3>World event log</h3>
           <WorldEventFeed campaignId={cid} />
         </section>
@@ -133,6 +137,64 @@ function SceneModePanel({ campaignId }: { campaignId: string }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+function PinnedFactsPanel({ campaignId }: { campaignId: string }) {
+  const { data: campaign } = useCampaign(campaignId)
+  const qc = useQueryClient()
+  const [draft, setDraft] = useState('')
+  const facts = (campaign?.settings_json.pinned_facts as string[] | undefined) ?? []
+
+  async function save(next: string[]) {
+    await api.patch(`/campaigns/${campaignId}`, {
+      settings: { ...campaign?.settings_json, pinned_facts: next },
+    })
+    await qc.invalidateQueries({ queryKey: ['campaigns', campaignId] })
+  }
+
+  return (
+    <div className="col">
+      {facts.length === 0 && (
+        <p className="muted">
+          Facts pinned here go into every AI prompt — things the DM must never forget or
+          contradict.
+        </p>
+      )}
+      <ul className="plain-list">
+        {facts.map((fact, i) => (
+          <li key={i} className="row">
+            <span className="grow">📌 {fact}</span>
+            <button
+              className="btn-danger"
+              title="Unpin"
+              onClick={() => save(facts.filter((_, j) => j !== i))}
+            >
+              ✕
+            </button>
+          </li>
+        ))}
+      </ul>
+      <form
+        className="row"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (!draft.trim()) return
+          void save([...facts, draft.trim()])
+          setDraft('')
+        }}
+      >
+        <input
+          className="grow"
+          placeholder="The mayor is secretly a dragon…"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <button className="btn-primary" type="submit">
+          Pin
+        </button>
+      </form>
+    </div>
   )
 }
 

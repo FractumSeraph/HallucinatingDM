@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter
@@ -12,7 +13,7 @@ from app.api.deps import (
     require_campaign_member,
 )
 from app.api.errors import bad_request, forbidden, not_found
-from app.models import Campaign, CampaignMember, User
+from app.models import Campaign, CampaignMember, Summary, User
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 
@@ -142,6 +143,42 @@ async def delete_campaign(campaign_id: str, db: DbSession, user: CurrentUser) ->
     await db.delete(campaign)
     await db.commit()
     return {"ok": True}
+
+
+class RecapEntry(BaseModel):
+    scene_id: str | None
+    content: str
+    created_at: datetime
+
+
+class RecapsOut(BaseModel):
+    campaign_summary: str
+    recaps: list[RecapEntry]
+
+
+@router.get("/{campaign_id}/recaps", response_model=RecapsOut)
+async def get_recaps(campaign_id: str, db: DbSession, user: CurrentUser) -> RecapsOut:
+    """'Previously on…' — the campaign summary plus the last few scene recaps."""
+    await require_campaign_member(campaign_id, db, user)
+    campaign = await db.get(Campaign, campaign_id)
+    assert campaign
+    rows = list(
+        (
+            await db.execute(
+                select(Summary)
+                .where(Summary.campaign_id == campaign_id, Summary.scope == "scene")
+                .order_by(Summary.created_at.desc())
+                .limit(5)
+            )
+        ).scalars()
+    )
+    return RecapsOut(
+        campaign_summary=campaign.summary,
+        recaps=[
+            RecapEntry(scene_id=r.ref_id, content=r.content, created_at=r.created_at)
+            for r in rows
+        ],
+    )
 
 
 @router.get("/{campaign_id}/members", response_model=list[MemberOut])

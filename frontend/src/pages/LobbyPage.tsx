@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
-import { useCampaign, useMembers } from '../api/hooks'
+import { useCampaign, useMembers, useRecaps } from '../api/hooks'
 import { SceneList } from '../components/SceneList'
 import { CharacterList } from '../components/CharacterList'
 import { useLiveCache } from '../ws/useLiveCache'
@@ -37,6 +37,8 @@ export function LobbyPage() {
         </div>
       </div>
 
+      <RecapCard campaignId={cid} />
+
       <div className="lobby-grid">
         <section className="card">
           <h3>Scenes</h3>
@@ -66,5 +68,25 @@ export function LobbyPage() {
         </section>
       </div>
     </div>
+  )
+}
+
+function RecapCard({ campaignId }: { campaignId: string }) {
+  const { data } = useRecaps(campaignId)
+  if (!data || (!data.campaign_summary && data.recaps.length === 0)) return null
+  return (
+    <section className="card" style={{ marginTop: '1rem' }}>
+      <h3>Previously on…</h3>
+      {data.campaign_summary && (
+        <p style={{ whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>{data.campaign_summary}</p>
+      )}
+      {data.recaps.length > 0 && (
+        <ul className="plain-list" style={{ fontSize: '0.85rem' }}>
+          {data.recaps.map((r, i) => (
+            <li key={i}>• {r.content}</li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }

@@ -16,6 +16,17 @@ export interface Campaign {
   my_role: 'dm' | 'player' | null
 }
 
+export interface RecapEntry {
+  scene_id: string | null
+  content: string
+  created_at: string
+}
+
+export interface Recaps {
+  campaign_summary: string
+  recaps: RecapEntry[]
+}
+
 export interface Member {
   user_id: string
   display_name: string

@@ -439,6 +439,52 @@ async def scene_control(ctx: ToolContext, args: SceneControlArgs) -> ToolResult:
     return ToolResult(ok=True, data={"scene_ended": True})
 
 
+class PinFactArgs(BaseModel):
+    fact: str = Field(
+        min_length=3, max_length=300, description="Short, always-true campaign fact"
+    )
+    op: Literal["pin", "unpin"] = "pin"
+
+
+@tool(
+    "pin_fact",
+    "Pin a permanent campaign fact that must never be forgotten or "
+    "contradicted ('The mayor is secretly a dragon'). Pinned facts appear in "
+    "every future prompt. Use op=unpin to retire one.",
+    PinFactArgs,
+    mutating=True,
+    gated=True,
+)
+async def pin_fact(ctx: ToolContext, args: PinFactArgs) -> ToolResult:
+    settings = dict(ctx.campaign.settings_json or {})
+    facts = [str(f) for f in settings.get("pinned_facts") or []]
+    ctx.inverse_patches.append(
+        {
+            "kind": "campaign",
+            "id": ctx.campaign.id,
+            "patch": {"settings_json.pinned_facts": list(facts)},
+        }
+    )
+    fact = args.fact.strip()
+    note = ""
+    if args.op == "unpin":
+        remaining = [f for f in facts if f.lower() != fact.lower()]
+        if len(remaining) == len(facts):
+            return ToolResult(
+                ok=False, error=f"No pinned fact matching '{fact}'. Pinned: {facts}"
+            )
+        facts = remaining
+    else:
+        if any(f.lower() == fact.lower() for f in facts):
+            return ToolResult(ok=True, data={"pinned_facts": facts, "note": "already pinned"})
+        facts.append(fact)
+        note = f"📌 Pinned: {fact}"
+    settings["pinned_facts"] = facts
+    ctx.campaign.settings_json = settings
+    await ctx.db.commit()
+    return ToolResult(ok=True, data={"pinned_facts": facts}, public_note=note)
+
+
 class LoreArgs(BaseModel):
     query: str = Field(description="What campaign history/lore to recall")
 

@@ -40,7 +40,12 @@ STYLE:
 - After tools resolve, weave the mechanical results into the narration naturally."""
 
 
-def _party_cards(characters: list[Character], owners: dict[str, str]) -> str:
+def _party_cards(
+    characters: list[Character],
+    owners: dict[str, str],
+    inventories: dict[str, str] | None = None,
+) -> str:
+    inventories = inventories or {}
     lines = []
     for c in characters:
         mods = {
@@ -63,8 +68,46 @@ def _party_cards(characters: list[Character], owners: dict[str, str]) -> str:
                 if sheet.get("personality")
                 else ""
             )
+            + (f". Carrying: {inventories[c.id]}" if inventories.get(c.id) else "")
         )
     return "\n".join(lines) if lines else "(no active characters yet)"
+
+
+MAX_INVENTORY_ITEMS = 8
+
+
+async def _party_inventories(db: AsyncSession, characters: list[Character]) -> dict[str, str]:
+    """One 'Torch x5, Rope · 34gp' line per character for the party cards."""
+    if not characters:
+        return {}
+    from app.models import InventoryEntry, Item
+
+    rows = await db.execute(
+        select(InventoryEntry.owner_id, Item.name, InventoryEntry.quantity)
+        .join(Item, Item.id == InventoryEntry.item_id)
+        .where(
+            InventoryEntry.owner_type == "character",
+            InventoryEntry.owner_id.in_([c.id for c in characters]),
+        )
+        .order_by(InventoryEntry.created_at)
+    )
+    carried: dict[str, list[str]] = {}
+    for owner_id, item_name, quantity in rows.all():
+        carried.setdefault(owner_id, []).append(
+            f"{item_name} x{quantity}" if quantity > 1 else item_name
+        )
+    inventories: dict[str, str] = {}
+    for c in characters:
+        items = carried.get(c.id, [])
+        line = ", ".join(items[:MAX_INVENTORY_ITEMS])
+        if len(items) > MAX_INVENTORY_ITEMS:
+            line += ", …"
+        coins = " ".join(f"{v}{k}" for k, v in (c.currency_json or {}).items() if v)
+        if coins:
+            line = f"{line} · {coins}" if line else coins
+        if line:
+            inventories[c.id] = line
+    return inventories
 
 
 async def build_messages(
@@ -105,7 +148,15 @@ async def build_messages(
         brief.append(f"\nThe story so far:\n{campaign.summary}")
     sections.append("\n".join(brief))
 
-    sections.append("# The party\n" + _party_cards(characters, users))
+    pinned = [str(f).strip() for f in settings.get("pinned_facts") or [] if str(f).strip()]
+    if pinned:
+        sections.append(
+            "# Pinned facts (always true — never forget or contradict)\n"
+            + "\n".join(f"- {f}" for f in pinned)
+        )
+
+    inventories = await _party_inventories(db, characters)
+    sections.append("# The party\n" + _party_cards(characters, users, inventories))
 
     scene_state = [f"# Current scene: {scene.name} ({scene.kind})"]
     if scene.time_note:
@@ -130,9 +181,8 @@ async def build_messages(
     sections.append("\n".join(scene_state))
 
     # --- Relevant entity cards ---------------------------------------------------
-    recent_text = " ".join(
-        m.content.lower()
-        for m in (
+    recent_msgs = list(
+        (
             await db.execute(
                 select(Message)
                 .where(Message.scene_id == scene.id)
@@ -141,6 +191,7 @@ async def build_messages(
             )
         ).scalars()
     )
+    recent_text = " ".join(m.content.lower() for m in recent_msgs)
     npcs = list(
         (await db.execute(select(NPC).where(NPC.campaign_id == campaign.id))).scalars()
     )
@@ -248,6 +299,29 @@ async def build_messages(
         sections.append(
             "# Recent scene recaps\n" + "\n---\n".join(r.content for r in reversed(recaps))
         )
+
+    # Automatic long-term recall: search old chat/events/entities with the
+    # latest player messages as the query — small models rarely call recall_lore
+    # on their own, so retrieval happens on every turn.
+    from app.ai.retrieval import auto_recall
+
+    recall_query = " ".join(
+        [m.content for m in recent_msgs if m.author_type in ("player", "dm") and m.content][:2]
+    )
+    if recall_query:
+        latest_seq = recent_msgs[0].seq
+        recalled = await auto_recall(
+            db,
+            campaign.id,
+            scene.id,
+            recall_query[:600],
+            exclude_scene_after_seq=latest_seq - RECENT_MESSAGES,
+        )
+        if recalled:
+            sections.append(
+                "# Recalled from earlier in the campaign (may be relevant)\n"
+                + "\n".join(f"- {s}" for s in recalled)
+            )
 
     if prompted_tool_catalog:
         sections.append(prompted_tool_catalog)
