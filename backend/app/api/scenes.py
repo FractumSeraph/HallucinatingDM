@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter
@@ -121,11 +122,21 @@ async def update_scene(
         raise not_found("Scene")
     await require_campaign_dm(scene.campaign_id, db, user)
 
+    was_active = scene.status == "active"
     for field_name in ("name", "status", "dm_mode", "dm_notes", "time_note"):
         value = getattr(body, field_name)
         if value is not None:
             setattr(scene, field_name, value)
     await db.commit()
+
+    # A DM ending a scene by hand still gets a recap (the AI path does this
+    # through the scene_control tool).
+    if was_active and scene.status in ("idle", "archived"):
+        from app.ai import memory
+
+        asyncio.get_running_loop().create_task(
+            memory.rollup_scene_by_id(scene.id, force=True)
+        )
 
     hub.broadcast(
         scene.campaign_id,
@@ -190,6 +201,15 @@ async def post_message(
     from app.ai.trigger import maybe_trigger_ai_turn
 
     await maybe_trigger_ai_turn(scene, msg)
+
+    # Human-run scenes never take AI turns, so the rolling summarizer is kicked
+    # from here once the unsummarized backlog is long enough (the AI/assist/
+    # copilot paths already summarize after each AI turn).
+    if scene.dm_mode == "human":
+        from app.ai import memory
+
+        if msg.seq - scene.summary_upto_seq >= memory.SUMMARIZE_EVERY:
+            asyncio.get_running_loop().create_task(memory.rollup_scene_by_id(scene.id))
     return message_out(msg)
 
 

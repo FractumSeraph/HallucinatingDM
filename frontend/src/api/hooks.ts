@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from './client'
-import type { Campaign, Member, User } from './types'
+import type { Campaign, Member, Recaps, User } from './types'
 
 export function useMe() {
   return useQuery<User | null>({
@@ -35,6 +35,13 @@ export function useCampaign(id: string) {
   return useQuery<Campaign>({
     queryKey: ['campaigns', id],
     queryFn: () => api.get(`/campaigns/${id}`),
+  })
+}
+
+export function useRecaps(campaignId: string) {
+  return useQuery<Recaps>({
+    queryKey: ['campaigns', campaignId, 'recaps'],
+    queryFn: () => api.get(`/campaigns/${campaignId}/recaps`),
   })
 }
 
