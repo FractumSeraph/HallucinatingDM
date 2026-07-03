@@ -111,7 +111,7 @@ async def ingest_document(document_id: str, pdf_path: str) -> None:
             # server is down; vectors can be built later via admin reindex.
             try:
                 vectors = await embed_documents([r.text for r in rows])
-                await store_vectors(db, [(r.id, v) for r, v in zip(rows, vectors)])
+                await store_vectors(db, [(r.id, v) for r, v in zip(rows, vectors, strict=True)])
             except Exception as exc:
                 log.warning("embedding failed for %s (FTS-only): %s", document.title, exc)
 
@@ -201,5 +201,5 @@ async def reindex_embeddings() -> dict:
         if not chunks:
             return {"chunks": 0, "embedded": 0}
         vectors = await embed_documents([c.text for c in chunks])
-        ok = await store_vectors(db, [(c.id, v) for c, v in zip(chunks, vectors)])
+        ok = await store_vectors(db, [(c.id, v) for c, v in zip(chunks, vectors, strict=True)])
         return {"chunks": len(chunks), "embedded": len(vectors) if ok else 0}

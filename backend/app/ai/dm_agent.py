@@ -19,9 +19,17 @@ from app.ai.context_builder import build_messages
 from app.ai.provider import Done, TextDelta, ToolCall, get_provider
 from app.ai.toolcall_fallback import extract_tool_calls, render_tool_catalog
 from app.ai.tools.registry import ToolContext, ToolResult, registry
+from app.db import get_sessionmaker
+from app.models import AiTurn, Campaign, Scene, ToolCallLog
+from app.realtime import events
+from app.realtime.hub import hub
+from app.services.messages import create_message, message_out
+
+log = logging.getLogger("hallucinatingdm.agent")
 
 
-def ToolResultHeld(approval_id: str) -> ToolResult:
+def held_for_approval_result(approval_id: str) -> ToolResult:
+    """Stand-in result the LLM receives while the DM decides on a gated call."""
     return ToolResult(
         ok=True,
         data={
@@ -31,13 +39,6 @@ def ToolResultHeld(approval_id: str) -> ToolResult:
         },
         public_note="⏳ Waiting on the DM's approval…",
     )
-from app.db import get_sessionmaker
-from app.models import AiTurn, Campaign, Scene, ToolCallLog
-from app.realtime import events
-from app.realtime.hub import hub
-from app.services.messages import create_message, message_out
-
-log = logging.getLogger("hallucinatingdm.agent")
 
 MAX_TOOL_ROUNDS = 8
 COALESCE_SECONDS = 1.0
@@ -272,7 +273,7 @@ async def run_turn(scene_id: str) -> None:
                         from app.services.approvals import hold_tool_call
 
                         approval = await hold_tool_call(db, campaign, scene, spec.name, call.arguments)
-                        result = ToolResultHeld(approval.id)
+                        result = held_for_approval_result(approval.id)
                     else:
                         result = await registry.dispatch(ctx, call.name, call.arguments)
                     log_row = ToolCallLog(
