@@ -74,6 +74,7 @@ export function CharacterSheet() {
             <strong>AC</strong> {c.ac} · <strong>Speed</strong> {sheet.speed ?? 30} ft ·{' '}
             <strong>Prof</strong> +{2 + Math.floor((c.level - 1) / 4)}
           </p>
+          <LevelUpButton c={c} charId={charId} cid={cid} />
           {c.conditions_json.length > 0 && (
             <p>
               {c.conditions_json.map((cond) => (
@@ -159,6 +160,44 @@ export function CharacterSheet() {
           <NotesEditor charId={charId} initial={c.notes} onSave={(notes) => patch({ notes })} />
         </section>
       </div>
+    </div>
+  )
+}
+
+const XP_THRESHOLDS = [
+  0, 0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000, 100000,
+  120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000,
+]
+
+function LevelUpButton({ c, charId, cid }: { c: Character; charId: string; cid: string }) {
+  const qc = useQueryClient()
+  const [error, setError] = useState('')
+  const eligible = c.level < 20 && c.xp >= XP_THRESHOLDS[c.level + 1]
+  if (!eligible) {
+    const next = c.level < 20 ? XP_THRESHOLDS[c.level + 1] : null
+    return next ? (
+      <p className="muted" style={{ fontSize: '0.8rem' }}>
+        {next - c.xp} XP to level {c.level + 1}
+      </p>
+    ) : null
+  }
+  return (
+    <div>
+      <button
+        className="btn-primary"
+        onClick={async () => {
+          try {
+            const updated = await api.post<Character>(`/characters/${charId}/level-up`)
+            qc.setQueryData(['characters', charId], updated)
+            qc.invalidateQueries({ queryKey: ['campaigns', cid, 'characters'] })
+          } catch (err) {
+            setError(err instanceof ApiError ? err.message : 'Level up failed')
+          }
+        }}
+      >
+        ⬆️ Level up to {c.level + 1}!
+      </button>
+      {error && <span className="error-text">{error}</span>}
     </div>
   )
 }

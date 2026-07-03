@@ -8,6 +8,8 @@ import { CharacterWizard } from './pages/CharacterWizard'
 import { CharacterSheet } from './pages/CharacterSheet'
 import { SearchPage } from './pages/SearchPage'
 import { WorldPage } from './pages/WorldPage'
+import { DmScreen } from './pages/DmScreen'
+import { AdminPage } from './pages/AdminPage'
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage mode="login" /> },
@@ -24,6 +26,8 @@ export const router = createBrowserRouter([
       { path: 'campaigns/:cid/characters/:charId', element: <CharacterSheet /> },
       { path: 'campaigns/:cid/search', element: <SearchPage /> },
       { path: 'campaigns/:cid/world', element: <WorldPage /> },
+      { path: 'campaigns/:cid/dm', element: <DmScreen /> },
+      { path: 'admin', element: <AdminPage /> },
       { path: '*', element: <div className="page-pad">Coming soon…</div> },
     ],
   },

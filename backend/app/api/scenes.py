@@ -193,6 +193,64 @@ async def post_message(
     return message_out(msg)
 
 
+class RollResponse(BaseModel):
+    message_id: str  # the roll_request message being answered
+
+
+@router.post("/scenes/{scene_id}/respond-roll")
+async def respond_roll(
+    scene_id: str, body: RollResponse, db: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    """A player answers an AI 'request_player_roll' prompt: the server rolls
+    with their real sheet modifiers and the AI continues."""
+    scene = await _get_scene_for_member(scene_id, db, user)
+    prompt_msg = await db.get(Message, body.message_id)
+    if not prompt_msg or prompt_msg.scene_id != scene_id:
+        raise not_found("Roll request")
+    request = prompt_msg.payload_json.get("roll_request")
+    if not request:
+        raise bad_request("That message isn't a roll request")
+    if prompt_msg.payload_json.get("answered"):
+        raise bad_request("That roll was already made")
+
+    character = await db.get(Character, request.get("character_id", ""))
+    if not character:
+        raise not_found("Character")
+    member = await require_campaign_member(scene.campaign_id, db, user)
+    if character.user_id != user.id and member.role != "dm":
+        raise bad_request("That roll prompt is for another player")
+
+    from app.ai.tools.core_tools import _sheet_modifier
+    from app.services.dice import DiceResult, roll_d20
+
+    kind = request.get("kind", "check")
+    skill = request.get("ability_or_skill", "")
+    dc = request.get("dc")
+    face, faces = roll_d20()
+    mod, mod_note = _sheet_modifier(character, kind, skill)
+    total = face + mod
+    detail: dict[str, Any] = {"kind": kind, "skill": skill, "modifier_note": mod_note}
+    if dc is not None:
+        detail["dc"] = dc
+        detail["outcome"] = "success" if total >= dc else "failure"
+
+    result = DiceResult(
+        expression="1d20", rolls=faces, kept=[face], modifier=mod, total=total
+    )
+    msg, _roll = await create_roll_message(
+        db, scene, expression="1d20", purpose=kind, roller_name=character.name,
+        author_type="player", author_user_id=user.id, character_id=character.id,
+        detail=detail, result=result,
+    )
+    prompt_msg.payload_json = {**prompt_msg.payload_json, "answered": True}
+    await db.commit()
+
+    from app.ai.trigger import maybe_trigger_ai_turn
+
+    await maybe_trigger_ai_turn(scene, msg)
+    return message_out(msg)
+
+
 @router.post("/scenes/{scene_id}/roll")
 async def roll_dice(
     scene_id: str, body: RollRequest, db: DbSession, user: CurrentUser

@@ -18,7 +18,19 @@ import app.ai.tools.world_tools  # noqa: F401  — register tools
 from app.ai.context_builder import build_messages
 from app.ai.provider import Done, TextDelta, ToolCall, get_provider
 from app.ai.toolcall_fallback import extract_tool_calls, render_tool_catalog
-from app.ai.tools.registry import ToolContext, registry
+from app.ai.tools.registry import ToolContext, ToolResult, registry
+
+
+def ToolResultHeld(approval_id: str) -> ToolResult:
+    return ToolResult(
+        ok=True,
+        data={
+            "held_for_dm_approval": True,
+            "approval_id": approval_id,
+            "note": "The human DM must approve this action; narrate as if pending.",
+        },
+        public_note="⏳ Waiting on the DM's approval…",
+    )
 from app.db import get_sessionmaker
 from app.models import AiTurn, Campaign, Scene, ToolCallLog
 from app.realtime import events
@@ -87,6 +99,9 @@ async def run_turn(scene_id: str) -> None:
             messages = await build_messages(db, campaign, scene, catalog)
             tools = registry.openai_schemas() if use_native else None
 
+            # Assist mode: narration is drafted privately for the DM to approve.
+            assist = scene.dm_mode == "assist"
+
             for round_no in range(MAX_TOOL_ROUNDS):
                 stream_id = f"{turn.id}-{round_no}"
                 buffer = ""
@@ -102,9 +117,10 @@ async def run_turn(scene_id: str) -> None:
                                 campaign.id,
                                 events.make_event(
                                     events.STREAM_START, campaign.id,
-                                    {"stream_id": stream_id}, scene_id,
+                                    {"stream_id": stream_id, "draft": assist}, scene_id,
                                 ),
                                 scene_id=scene_id,
+                                dm_only=assist,
                             )
                         buffer += event.text
                         # In prompted mode, hold back once a tool fence opens.
@@ -120,6 +136,7 @@ async def run_turn(scene_id: str) -> None:
                                     scene_id,
                                 ),
                                 scene_id=scene_id,
+                                dm_only=assist,
                             )
                     elif isinstance(event, ToolCall):
                         native_calls.append(event)
@@ -139,13 +156,32 @@ async def run_turn(scene_id: str) -> None:
                     narration = buffer.strip()
                     calls, parse_errors = native_calls, []
 
-                # Persist this round's narration (if any) as a message.
+                # Leak scan: hold/flag narration that quotes secret notes verbatim.
+                from app.services.safety import scan_for_secret_leaks
+
+                leak = await scan_for_secret_leaks(db, campaign, scene, narration)
+
+                # Persist this round's narration (if any) as a message. Assist
+                # drafts (and leaky narration in copilot) stay DM-only until
+                # approved; in autonomous mode leaks get a DM warning instead.
+                hold_narration = assist or (leak and scene.dm_mode == "copilot")
                 message_row = None
                 if narration:
                     message_row = await create_message(
                         db, scene, author_type="ai", kind="narration",
                         content=narration, broadcast=False,
+                        visibility="dm" if hold_narration else "all",
                     )
+                    if hold_narration:
+                        from app.services.approvals import hold_draft_turn
+
+                        await hold_draft_turn(db, campaign, scene, message_row, leak=leak)
+                    elif leak:
+                        await create_message(
+                            db, scene, author_type="system", kind="system",
+                            content=f"⚠️ Possible secret leak in the last narration: {leak}",
+                            visibility="dm",
+                        )
                 if started:
                     hub.broadcast(
                         campaign.id,
@@ -158,6 +194,7 @@ async def run_turn(scene_id: str) -> None:
                             scene_id,
                         ),
                         scene_id=scene_id,
+                        dm_only=hold_narration,
                     )
                 elif message_row:
                     hub.broadcast(
@@ -167,6 +204,7 @@ async def run_turn(scene_id: str) -> None:
                             message_out(message_row), scene_id,
                         ),
                         scene_id=scene_id,
+                        dm_only=hold_narration,
                     )
 
                 steps.append(
@@ -221,7 +259,22 @@ async def run_turn(scene_id: str) -> None:
 
                 for call in calls:
                     _status(campaign.id, scene_id, f"🎲 {call.name}…")
-                    result = await registry.dispatch(ctx, call.name, call.arguments)
+
+                    # Copilot: gated tools wait for DM approval. Assist: every
+                    # mutating tool waits. Reads and dice always run.
+                    spec_name = registry.resolve_name(call.name)
+                    spec = registry.get(spec_name) if spec_name else None
+                    hold = spec is not None and (
+                        (scene.dm_mode == "copilot" and spec.gated)
+                        or (scene.dm_mode == "assist" and spec.mutating and spec.name != "roll_dice")
+                    )
+                    if hold:
+                        from app.services.approvals import hold_tool_call
+
+                        approval = await hold_tool_call(db, campaign, scene, spec.name, call.arguments)
+                        result = ToolResultHeld(approval.id)
+                    else:
+                        result = await registry.dispatch(ctx, call.name, call.arguments)
                     log_row = ToolCallLog(
                         scene_id=scene_id,
                         ai_turn_id=turn.id,

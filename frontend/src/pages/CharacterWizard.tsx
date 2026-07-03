@@ -136,9 +136,63 @@ export function CharacterWizard() {
     }
   }
 
+  const [concept, setConcept] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiError, setAiError] = useState('')
+
+  async function suggest() {
+    if (!concept.trim()) return
+    setAiBusy(true)
+    setAiError('')
+    try {
+      const build = await api.post<{
+        name: string
+        race: string
+        subrace: string
+        klass: string
+        background: string
+        alignment: string
+        base_scores: Record<string, number>
+        skill_choices: string[]
+        personality: string
+        backstory: string
+      }>(`/campaigns/${cid}/chargen-suggest`, { concept })
+      setName(build.name)
+      setRaceSlug(build.race)
+      setSubrace(build.subrace)
+      setClassSlug(build.klass)
+      setBackground(build.background || 'acolyte')
+      setAlignment(build.alignment)
+      setMethod('standard')
+      setScores(build.base_scores)
+      setSkills(build.skill_choices)
+      setPersonality(build.personality)
+      setBackstory(build.backstory)
+      setStep(4) // jump to review with everything filled in
+    } catch (err) {
+      setAiError(err instanceof ApiError ? err.message : 'Suggestion failed')
+    } finally {
+      setAiBusy(false)
+    }
+  }
+
   return (
     <div className="page-pad container wizard">
       <h1>Create a character</h1>
+
+      <div className="card row" style={{ flexWrap: 'wrap' }}>
+        <span>🔮</span>
+        <input
+          className="grow"
+          placeholder='Let the AI draft one: "a grumpy dwarf cleric who hates the sea"'
+          value={concept}
+          onChange={(e) => setConcept(e.target.value)}
+        />
+        <button onClick={suggest} disabled={aiBusy || !concept.trim()}>
+          {aiBusy ? 'Consulting the orb…' : 'Suggest build'}
+        </button>
+        {aiError && <span className="error-text">{aiError}</span>}
+      </div>
       <div className="wizard-steps">
         {STEPS.map((label, i) => (
           <button

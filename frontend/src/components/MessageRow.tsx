@@ -12,13 +12,20 @@ const AUTHOR_ICON: Record<Message['author_type'], string> = {
 export function MessageRow({
   message,
   streaming = false,
+  onRespondRoll,
 }: {
   message: Message
   streaming?: boolean
+  onRespondRoll?: (messageId: string) => void
 }) {
   if (message.kind === 'roll') {
     return <RollCard message={message} />
   }
+
+  const rollRequest = message.payload_json.roll_request as
+    | { character_id: string; kind: string; ability_or_skill: string; dc?: number }
+    | undefined
+  const answered = Boolean(message.payload_json.answered)
 
   const classes = [
     'msg',
@@ -43,6 +50,13 @@ export function MessageRow({
           dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
         />
         {streaming && <span className="cursor-blink">▍</span>}
+        {rollRequest && onRespondRoll && !answered && !message.struck && (
+          <div style={{ marginTop: '0.35rem' }}>
+            <button className="btn-primary" onClick={() => onRespondRoll(message.id)}>
+              🎲 Roll {rollRequest.ability_or_skill} {rollRequest.kind}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

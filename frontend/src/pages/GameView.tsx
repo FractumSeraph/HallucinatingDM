@@ -136,13 +136,39 @@ export function GameView() {
             {scene.dm_mode === 'ai' ? 'AI DM' : scene.dm_mode}
           </span>
         )}
+        {scene && scene.dm_mode !== 'human' && (
+          <button
+            title="Ask the AI DM to continue"
+            onClick={() => api.post(`/scenes/${sid}/nudge`).catch(() => {})}
+          >
+            ✨ Continue
+          </button>
+        )}
+        {isDm && (
+          <button
+            className="btn-danger"
+            title="Strike the last AI turn and reverse its effects"
+            onClick={() => {
+              if (confirm('Undo the last AI turn? Its messages are struck and state changes reversed.'))
+                api.post(`/scenes/${sid}/retcon-last-turn`).catch(() => {})
+            }}
+          >
+            ⎌ Retcon
+          </button>
+        )}
       </header>
 
       <div className="game-body">
         <div className="game-chat">
           <div className="message-list" ref={listRef}>
             {messages?.map((m) => (
-              <MessageRow key={m.id} message={m} />
+              <MessageRow
+                key={m.id}
+                message={m}
+                onRespondRoll={(messageId) =>
+                  api.post(`/scenes/${sid}/respond-roll`, { message_id: messageId }).catch(() => {})
+                }
+              />
             ))}
             {Object.entries(streams).map(([id, s]) => (
               <MessageRow

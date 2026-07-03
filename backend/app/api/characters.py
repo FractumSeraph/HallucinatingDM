@@ -138,6 +138,64 @@ async def patch_character(
     return character_out(character)
 
 
+class ChargenSuggestBody(BaseModel):
+    concept: str = Field(min_length=3, max_length=500)
+
+
+@router.post("/campaigns/{campaign_id}/chargen-suggest")
+async def chargen_suggest(
+    campaign_id: str, body: ChargenSuggestBody, db: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    """AI-assisted wizard: turn a concept into a validated build payload."""
+    await require_campaign_member(campaign_id, db, user)
+    from app.ai.chargen import suggest_build
+
+    build, error = await suggest_build(db, campaign_id, user.id, body.concept)
+    if build is None:
+        raise bad_request(f"The AI couldn't produce a legal build: {error}")
+    return build
+
+
+@router.post("/characters/{character_id}/level-up")
+async def level_up(character_id: str, db: DbSession, user: CurrentUser) -> dict[str, Any]:
+    from app.services import rules_5e
+
+    character, role = await _get_character(character_id, db, user)
+    _require_owner_or_dm(character, user.id, role)
+
+    earned = rules_5e.level_for_xp(character.xp)
+    if earned <= character.level:
+        needed = rules_5e.xp_for_next_level(character.level)
+        raise bad_request(
+            f"Not enough XP (need {needed}, have {character.xp})" if needed else "Already level 20"
+        )
+
+    character.level += 1
+    hit_die = int(character.sheet_json.get("hit_die", 8))
+    con_mod = rules_5e.ability_modifier(character.ability_scores_json.get("con", 10))
+    gained = max(1, hit_die // 2 + 1 + con_mod)
+    character.hp_max += gained
+    character.hp_current += gained
+
+    # refresh slot maxima for the new level, keeping used counts
+    class_slug = character.klass.lower().replace(" ", "-")
+    new_slots = rules_5e.spell_slots_for(class_slug, character.level)
+    for lvl, slot in new_slots.items():
+        old = character.spell_slots_json.get(lvl, {})
+        slot["used"] = min(old.get("used", 0), slot["max"])
+    character.spell_slots_json = new_slots
+
+    resources = {k: dict(v) for k, v in character.resources_json.items()}
+    hd = resources.get("hit_dice", {"max": 0, "used": 0, "die": hit_die})
+    hd["max"] = character.level
+    resources["hit_dice"] = hd
+    character.resources_json = resources
+
+    await db.commit()
+    broadcast_character(character)
+    return character_out(character)
+
+
 # --- Inventory --------------------------------------------------------------
 
 

@@ -351,3 +351,12 @@ input:focus, textarea:focus, select:focus {
 }
 .combatant-active { background: rgba(180, 140, 255, 0.14); outline: 1px solid var(--accent); }
 .combatant-down { opacity: 0.45; }
+
+.approval-args {
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.75rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
