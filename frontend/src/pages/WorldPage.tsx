@@ -1,0 +1,258 @@
+import { FormEvent, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { api } from '../api/client'
+import { useCampaign } from '../api/hooks'
+import type { Faction, Location, Monster, NPC, Quest } from '../api/types'
+import { useLiveCache } from '../ws/useLiveCache'
+
+interface World {
+  locations: Location[]
+  npcs: NPC[]
+  factions: Faction[]
+  quests: Quest[]
+  monsters: Monster[]
+}
+
+const TABS = ['Locations', 'NPCs', 'Factions', 'Quests'] as const
+
+export function WorldPage() {
+  const { cid } = useParams() as { cid: string }
+  const { data: campaign } = useCampaign(cid)
+  const [tab, setTab] = useState<(typeof TABS)[number]>('Locations')
+  useLiveCache(cid)
+
+  const { data: world } = useQuery<World>({
+    queryKey: ['campaigns', cid, 'world'],
+    queryFn: () => api.get(`/campaigns/${cid}/world`),
+  })
+
+  const isDm = campaign?.my_role === 'dm'
+
+  return (
+    <div className="page-pad container">
+      <Link to={`/campaigns/${cid}`}>← {campaign?.name ?? 'Campaign'}</Link>
+      <h1>World</h1>
+      <div className="row" style={{ flexWrap: 'wrap' }}>
+        {TABS.map((t) => (
+          <button key={t} className={tab === t ? 'btn-primary' : ''} onClick={() => setTab(t)}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ marginTop: '1rem' }}>
+        {tab === 'Locations' && (
+          <LocationTree campaignId={cid} locations={world?.locations ?? []} isDm={isDm} />
+        )}
+        {tab === 'NPCs' && <NpcList campaignId={cid} npcs={world?.npcs ?? []} isDm={isDm} />}
+        {tab === 'Factions' && (
+          <FactionList campaignId={cid} factions={world?.factions ?? []} isDm={isDm} />
+        )}
+        {tab === 'Quests' && (
+          <QuestList campaignId={cid} quests={world?.quests ?? []} isDm={isDm} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CreateForm({
+  campaignId,
+  kind,
+  extraFields,
+}: {
+  campaignId: string
+  kind: string
+  extraFields?: Record<string, string>
+}) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const qc = useQueryClient()
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    const fields: Record<string, unknown> = { ...extraFields, description }
+    if (kind === 'quest') {
+      fields.title = name
+      fields.summary = description
+      delete fields.description
+    } else {
+      fields.name = name
+    }
+    await api.post(`/campaigns/${campaignId}/world/${kind}`, { fields })
+    setName('')
+    setDescription('')
+    await qc.invalidateQueries({ queryKey: ['campaigns', campaignId, 'world'] })
+  }
+
+  return (
+    <form onSubmit={submit} className="row card" style={{ marginTop: '0.75rem', flexWrap: 'wrap' }}>
+      <input
+        placeholder={`New ${kind} name…`}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        style={{ maxWidth: 220 }}
+      />
+      <input
+        placeholder="Description"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        className="grow"
+      />
+      <button>Add</button>
+    </form>
+  )
+}
+
+function LocationTree({
+  campaignId,
+  locations,
+  isDm,
+}: {
+  campaignId: string
+  locations: Location[]
+  isDm: boolean
+}) {
+  const roots = locations.filter((l) => !l.parent_id)
+  const children = (id: string) => locations.filter((l) => l.parent_id === id)
+
+  function render(loc: Location, depth: number) {
+    return (
+      <div key={loc.id} style={{ marginLeft: depth * 18 }}>
+        <div className="card" style={{ marginBottom: 6, padding: '0.5rem 0.9rem' }}>
+          <strong>{loc.name}</strong> <span className="badge">{loc.kind}</span>
+          {loc.created_by === 'ai' && <span className="badge badge-mode-ai"> AI</span>}
+          {loc.description && <p className="muted" style={{ margin: '0.25rem 0 0' }}>{loc.description}</p>}
+          {isDm && loc.dm_notes && (
+            <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+              🔒 {loc.dm_notes}
+            </p>
+          )}
+        </div>
+        {children(loc.id).map((c) => render(c, depth + 1))}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {locations.length === 0 && (
+        <p className="muted">No places charted yet — the AI DM saves everywhere the party goes.</p>
+      )}
+      {roots.map((l) => render(l, 0))}
+      {isDm && <CreateForm campaignId={campaignId} kind="location" extraFields={{ kind: 'settlement' }} />}
+    </div>
+  )
+}
+
+function NpcList({ campaignId, npcs, isDm }: { campaignId: string; npcs: NPC[]; isDm: boolean }) {
+  return (
+    <div>
+      {npcs.length === 0 && <p className="muted">Nobody's been met yet.</p>}
+      <div className="campaign-grid">
+        {npcs.map((n) => (
+          <div key={n.id} className="card">
+            <strong>{n.name}</strong>{' '}
+            {n.status === 'dead' && <span className="badge badge-fail">dead</span>}
+            {n.created_by === 'ai' && <span className="badge badge-mode-ai">AI</span>}
+            <div className="muted" style={{ fontSize: '0.85rem' }}>
+              {n.role || 'unknown role'} · {n.disposition}
+            </div>
+            {n.description && <p style={{ fontSize: '0.9rem' }}>{n.description}</p>}
+            {isDm && n.secrets && (
+              <p className="muted" style={{ fontSize: '0.85rem' }}>
+                🔒 {n.secrets}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+      {isDm && <CreateForm campaignId={campaignId} kind="npc" />}
+    </div>
+  )
+}
+
+function FactionList({
+  campaignId,
+  factions,
+  isDm,
+}: {
+  campaignId: string
+  factions: Faction[]
+  isDm: boolean
+}) {
+  return (
+    <div>
+      {factions.length === 0 && <p className="muted">No factions known.</p>}
+      <div className="campaign-grid">
+        {factions.map((f) => (
+          <div key={f.id} className="card">
+            <strong>{f.name}</strong>
+            {f.description && <p style={{ fontSize: '0.9rem' }}>{f.description}</p>}
+            {f.goals && (
+              <p className="muted" style={{ fontSize: '0.85rem' }}>
+                Goals: {f.goals}
+              </p>
+            )}
+            {isDm && f.dm_notes && (
+              <p className="muted" style={{ fontSize: '0.85rem' }}>
+                🔒 {f.dm_notes}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+      {isDm && <CreateForm campaignId={campaignId} kind="faction" />}
+    </div>
+  )
+}
+
+const QUEST_ICON: Record<Quest['status'], string> = {
+  rumored: '❔',
+  active: '🗺️',
+  completed: '✅',
+  failed: '❌',
+}
+
+function QuestList({
+  campaignId,
+  quests,
+  isDm,
+}: {
+  campaignId: string
+  quests: Quest[]
+  isDm: boolean
+}) {
+  return (
+    <div className="col" style={{ maxWidth: 700 }}>
+      {quests.length === 0 && <p className="muted">The quest log is empty.</p>}
+      {quests.map((q) => (
+        <div key={q.id} className="card">
+          <strong>
+            {QUEST_ICON[q.status]} {q.title}
+          </strong>{' '}
+          <span className="badge">{q.status}</span>
+          {q.summary && <p style={{ fontSize: '0.9rem', margin: '0.3rem 0' }}>{q.summary}</p>}
+          {q.objectives_json.length > 0 && (
+            <ul style={{ margin: '0.3rem 0 0', paddingLeft: '1.2rem' }}>
+              {q.objectives_json.map((o, i) => (
+                <li key={i} className={o.done ? 'muted' : ''}>
+                  {o.done ? '✓ ' : '○ '}
+                  {o.text}
+                </li>
+              ))}
+            </ul>
+          )}
+          {isDm && q.dm_notes && (
+            <p className="muted" style={{ fontSize: '0.85rem' }}>
+              🔒 {q.dm_notes}
+            </p>
+          )}
+        </div>
+      ))}
+      {isDm && <CreateForm campaignId={campaignId} kind="quest" />}
+    </div>
+  )
+}

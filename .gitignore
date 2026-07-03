@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# App data (SQLite db, uploaded PDFs)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Env / secrets
+.env
+.env.local
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Test artifacts
+frontend/e2e/test-results/
+frontend/playwright-report/
+coverage/
+.coverage
