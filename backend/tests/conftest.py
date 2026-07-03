@@ -30,6 +30,10 @@ async def app_client(tmp_path, monkeypatch):
 
     await seed_srd()
 
+    from app.rag.ingest import ingest_srd_prose
+
+    await ingest_srd_prose()
+
     app = create_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:

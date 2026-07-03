@@ -6,6 +6,7 @@ import { LobbyPage } from './pages/LobbyPage'
 import { GameView } from './pages/GameView'
 import { CharacterWizard } from './pages/CharacterWizard'
 import { CharacterSheet } from './pages/CharacterSheet'
+import { SearchPage } from './pages/SearchPage'
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage mode="login" /> },
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
       { path: 'campaigns/:cid/scenes/:sid', element: <GameView /> },
       { path: 'campaigns/:cid/characters/new', element: <CharacterWizard /> },
       { path: 'campaigns/:cid/characters/:charId', element: <CharacterSheet /> },
+      { path: 'campaigns/:cid/search', element: <SearchPage /> },
       { path: '*', element: <div className="page-pad">Coming soon…</div> },
     ],
   },

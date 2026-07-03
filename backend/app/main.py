@@ -40,6 +40,10 @@ async def lifespan(app: FastAPI):
 
     await seed_srd()
 
+    from app.rag.ingest import ingest_srd_prose
+
+    await ingest_srd_prose()
+
     yield
 
 

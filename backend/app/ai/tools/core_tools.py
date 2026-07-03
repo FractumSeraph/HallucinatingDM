@@ -428,17 +428,39 @@ async def award(ctx: ToolContext, args: AwardArgs) -> ToolResult:
 
 class LookupArgs(BaseModel):
     query: str = Field(description="What to look up")
-    kind: Literal["rule", "spell", "monster", "equipment", "magic-item", "condition"] = "rule"
+    kind: Literal["rule", "spell", "monster", "equipment", "magic-item", "condition", "book"] = "rule"
 
 
 @tool(
     "lookup",
     "Look up official 5E rules, spells, monsters, items, or conditions. Use "
-    "before adjudicating anything you're unsure about.",
+    "kind='book' to search the campaign's uploaded rulebooks/sourcebooks and "
+    "SRD prose. Use before adjudicating anything you're unsure about.",
     LookupArgs,
 )
 async def lookup(ctx: ToolContext, args: LookupArgs) -> ToolResult:
     query = args.query.strip()
+
+    if args.kind == "book":
+        from app.rag.search import search_books
+
+        hits = await search_books(ctx.db, ctx.campaign.id, query, limit=4)
+        if not hits:
+            return ToolResult(ok=False, error=f"No book passages matching '{query}'")
+        return ToolResult(
+            ok=True,
+            data={
+                "passages": [
+                    {
+                        "source": f"{h.document_title} — {h.section_path}"
+                        + (f" (p.{h.page_start})" if h.page_start else ""),
+                        "text": h.text[:1500],
+                    }
+                    for h in hits
+                ]
+            },
+        )
+
     result = await ctx.db.execute(
         select(SrdEntry)
         .where(SrdEntry.kind == args.kind, SrdEntry.name.ilike(f"%{query}%"))

@@ -38,7 +38,33 @@ _engine = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 
+vec_available = False
+
+
+def _load_sqlite_vec(dbapi_conn) -> None:
+    """Load the sqlite-vec extension onto the raw sqlite3 connection.
+
+    SQLAlchemy hands us an AsyncAdapt wrapper; unwrap to the stdlib connection.
+    If loading fails (platform without loadable-extension support), vector
+    search silently degrades to FTS-only.
+    """
+    global vec_available
+    raw = dbapi_conn
+    for attr in ("_connection", "_conn"):
+        raw = getattr(raw, attr, raw)
+    try:
+        import sqlite_vec
+
+        raw.enable_load_extension(True)
+        sqlite_vec.load(raw)
+        raw.enable_load_extension(False)
+        vec_available = True
+    except Exception:
+        vec_available = False
+
+
 def _configure_sqlite(dbapi_conn, _record) -> None:
+    _load_sqlite_vec(dbapi_conn)
     cursor = dbapi_conn.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA busy_timeout=5000")

@@ -64,6 +64,18 @@ async def put_llm_settings(
     return await get_llm_settings(user, _db)
 
 
+@router.post("/reindex")
+async def reindex(user: CurrentUser, _db: DbSession) -> dict[str, Any]:
+    """Rebuild all chunk embeddings with the currently configured model."""
+    _require_admin(user)
+    from app.rag.ingest import reindex_embeddings
+
+    try:
+        return await reindex_embeddings()
+    except Exception as exc:
+        return {"error": str(exc)[:300]}
+
+
 @router.post("/settings/test-llm")
 async def test_llm(user: CurrentUser, _db: DbSession) -> dict[str, Any]:
     """Round-trip a hello + an embedding to validate the configuration."""
