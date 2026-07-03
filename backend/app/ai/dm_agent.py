@@ -14,6 +14,7 @@ from collections import defaultdict
 from typing import Any
 
 import app.ai.tools.core_tools  # noqa: F401  — register tools
+import app.ai.tools.world_tools  # noqa: F401  — register tools
 from app.ai.context_builder import build_messages
 from app.ai.provider import Done, TextDelta, ToolCall, get_provider
 from app.ai.toolcall_fallback import extract_tool_calls, render_tool_catalog
@@ -292,6 +293,13 @@ async def run_turn(scene_id: str) -> None:
             turn.steps_json = steps
             turn.token_usage_json = usage_total
             await db.commit()
+
+            from app.ai.memory import maybe_rollup
+
+            try:
+                await maybe_rollup(db, campaign, scene)
+            except Exception:
+                log.exception("rolling summary failed (scene=%s)", scene_id)
         except Exception as exc:
             log.exception("AI turn failed (scene=%s)", scene_id)
             turn.status = "error"

@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Campaign, Character, Message, Scene, Summary, User
+from app.models import NPC, Campaign, Character, Location, Message, Quest, Scene, Summary, User
 from app.services import rules_5e
 
 RECENT_MESSAGES = 40
@@ -121,7 +121,93 @@ async def build_messages(
         scene_state.append(
             "Scene facts: " + "; ".join(f"{k}: {v}" for k, v in scratch.items())
         )
+    if scene.location_id:
+        location = await db.get(Location, scene.location_id)
+        if location:
+            scene_state.append(f"Location: {location.name} — {location.description[:300]}")
+            if location.dm_notes:
+                scene_state.append(f"Location DM notes (secret): {location.dm_notes[:300]}")
     sections.append("\n".join(scene_state))
+
+    # --- Relevant entity cards ---------------------------------------------------
+    recent_text = " ".join(
+        m.content.lower()
+        for m in (
+            await db.execute(
+                select(Message)
+                .where(Message.scene_id == scene.id)
+                .order_by(Message.seq.desc())
+                .limit(12)
+            )
+        ).scalars()
+    )
+    npcs = list(
+        (await db.execute(select(NPC).where(NPC.campaign_id == campaign.id))).scalars()
+    )
+    relevant_npcs = [
+        n
+        for n in npcs
+        if n.present_in_scene_id == scene.id
+        or (scene.location_id and n.location_id == scene.location_id)
+        or n.name.lower() in recent_text
+    ][:10]
+    if relevant_npcs:
+        cards = []
+        for n in relevant_npcs:
+            card = f"- {n.name}"
+            if n.role:
+                card += f" ({n.role})"
+            card += f" — disposition: {n.disposition or 'neutral'}"
+            if n.status == "dead":
+                card += " [DEAD]"
+            if n.description:
+                card += f". {n.description[:200]}"
+            if n.secrets:
+                card += f" SECRET (reveal only through play): {n.secrets[:200]}"
+            if n.stat_block_json:
+                hp = n.hp_current if n.hp_current is not None else n.stat_block_json.get("hp")
+                card += f" [combat: HP {hp}/{n.stat_block_json.get('hp')}, AC {n.stat_block_json.get('ac')}]"
+            cards.append(card)
+        sections.append("# NPCs in play (persisted — reuse them, don't reinvent)\n" + "\n".join(cards))
+
+    quests = list(
+        (
+            await db.execute(
+                select(Quest).where(
+                    Quest.campaign_id == campaign.id,
+                    Quest.status.in_(["rumored", "active"]),
+                )
+            )
+        ).scalars()
+    )
+    if quests:
+        lines = []
+        for q in quests:
+            objectives = ", ".join(
+                ("✓" if o.get("done") else "○") + o.get("text", "")
+                for o in q.objectives_json
+            )
+            lines.append(
+                f"- {q.title} [{q.status}] {q.summary[:150]}"
+                + (f" Objectives: {objectives}" if objectives else "")
+                + (f" HIDDEN twist: {q.dm_notes[:150]}" if q.dm_notes else "")
+            )
+        sections.append("# Open quests\n" + "\n".join(lines))
+
+    # --- Active combat -------------------------------------------------------------
+    from app.services.combat import combat_snapshot
+
+    combat = await combat_snapshot(db, scene.id)
+    if combat["encounter"]:
+        order = []
+        for c in combat["combatants"]:
+            marker = "→ " if c["id"] == combat["encounter"]["active_combatant_id"] else "  "
+            status = "DOWN" if c["defeated"] else f"HP {c['hp_current']}/{c['hp_max']}"
+            order.append(f"{marker}{c['name']} (init {c['initiative']}, {status})")
+        sections.append(
+            f"# COMBAT — round {combat['encounter']['round']} (run strict turn order; "
+            "use advance_combat after each turn)\n" + "\n".join(order)
+        )
 
     # Recent world events from other scenes (cross-scene continuity) — Phase 6
     # populates world_events; harmless when empty.

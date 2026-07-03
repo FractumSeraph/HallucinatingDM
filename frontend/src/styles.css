@@ -338,3 +338,16 @@ input:focus, textarea:focus, select:focus {
   border-radius: var(--radius);
 }
 .party-row:hover { border-color: var(--accent); text-decoration: none; }
+
+/* --- Combat panel ---------------------------------------------------------------- */
+.combat-panel { border: 1px solid var(--danger); border-radius: var(--radius); padding: 0.6rem; }
+.combatant-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.25rem 0.35rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.combatant-active { background: rgba(180, 140, 255, 0.14); outline: 1px solid var(--accent); }
+.combatant-down { opacity: 0.45; }
