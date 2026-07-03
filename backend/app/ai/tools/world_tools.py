@@ -462,7 +462,7 @@ async def pin_fact(ctx: ToolContext, args: PinFactArgs) -> ToolResult:
         {
             "kind": "campaign",
             "id": ctx.campaign.id,
-            "patch": {"settings_json.pinned_facts": list(facts)},
+            "patch": {"settings_json": {**settings, "pinned_facts": list(facts)}},
         }
     )
     fact = args.fact.strip()

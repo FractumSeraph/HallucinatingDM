@@ -147,8 +147,9 @@ function PinnedFactsPanel({ campaignId }: { campaignId: string }) {
   const facts = (campaign?.settings_json.pinned_facts as string[] | undefined) ?? []
 
   async function save(next: string[]) {
+    if (!campaign) return // settings not loaded yet — don't clobber them
     await api.patch(`/campaigns/${campaignId}`, {
-      settings: { ...campaign?.settings_json, pinned_facts: next },
+      settings: { ...campaign.settings_json, pinned_facts: next },
     })
     await qc.invalidateQueries({ queryKey: ['campaigns', campaignId] })
   }

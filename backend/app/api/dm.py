@@ -204,7 +204,13 @@ async def nudge(scene_id: str, db: DbSession, user: CurrentUser) -> dict[str, bo
 
 async def _apply_inverse_patch(db, patch: dict[str, Any]) -> None:
     kind, row_id, values = patch.get("kind"), patch.get("id"), patch.get("patch", {})
-    if kind == "character" and row_id:
+    if kind == "campaign" and row_id:
+        row = await db.get(Campaign, row_id)
+        if row:
+            for field_name, value in values.items():
+                if hasattr(row, field_name):
+                    setattr(row, field_name, value)
+    elif kind == "character" and row_id:
         row = await db.get(Character, row_id)
         if row:
             for field_name, value in values.items():
