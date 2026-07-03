@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     llm_provider: str = "openai_compat"  # openai_compat | mock
     llm_base_url: str = "http://localhost:11434/v1"
     llm_api_key: str = "ollama"
-    llm_model: str = "llama3.1"
+    llm_model: str = "qwen3.6:35b-a3b"
     llm_toolcall_mode: str = "auto"  # native | prompted | auto
     embedding_base_url: str = "http://localhost:11434/v1"
     embedding_api_key: str = "ollama"

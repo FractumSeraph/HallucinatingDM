@@ -21,6 +21,12 @@ services:
     profiles: ["ollama"]
     ports:
       - "127.0.0.1:11434:11434" # loopback only — lets host-side dev servers reuse it
+    environment:
+      # Long games need a long context window; Ollama's default (4k) silently
+      # truncates. Flash attention + q8 KV cache keep 32k affordable.
+      OLLAMA_CONTEXT_LENGTH: 32768
+      OLLAMA_FLASH_ATTENTION: 1
+      OLLAMA_KV_CACHE_TYPE: q8_0
     volumes:
       - ollama:/root/.ollama
     restart: unless-stopped
@@ -35,7 +41,7 @@ services:
       OLLAMA_HOST: http://ollama:11434
     entrypoint: >
       sh -c "until ollama list >/dev/null 2>&1; do sleep 2; done;
-      ollama pull llama3.1 && ollama pull nomic-embed-text"
+      ollama pull qwen3.6:35b-a3b && ollama pull nomic-embed-text"
     restart: "no"
 
 volumes:
