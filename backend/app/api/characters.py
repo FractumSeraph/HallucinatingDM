@@ -154,27 +154,7 @@ def _inventory_out(entry: InventoryEntry, item: Item) -> dict[str, Any]:
     }
 
 
-async def get_or_create_item(
-    db, campaign_id: str, name: str, description: str = "", item_type: str = "", source: str = "custom"
-) -> Item:
-    result = await db.execute(
-        select(Item).where(
-            Item.campaign_id == campaign_id, Item.name.ilike(name.strip())
-        )
-    )
-    item = result.scalars().first()
-    if item:
-        return item
-    item = Item(
-        campaign_id=campaign_id,
-        name=name.strip(),
-        description=description,
-        item_type=item_type,
-        source=source,
-    )
-    db.add(item)
-    await db.flush()
-    return item
+from app.services.items import get_or_create_item  # noqa: E402  (shared with AI tools)
 
 
 @router.get("/characters/{character_id}/inventory")

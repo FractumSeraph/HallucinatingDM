@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.campaigns import router as campaigns_router
 from app.api.characters import router as characters_router
@@ -12,3 +13,4 @@ api_router.include_router(campaigns_router)
 api_router.include_router(scenes_router)
 api_router.include_router(characters_router)
 api_router.include_router(srd_router)
+api_router.include_router(admin_router)
