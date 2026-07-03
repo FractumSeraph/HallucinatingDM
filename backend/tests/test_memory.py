@@ -283,6 +283,16 @@ async def test_pinned_facts_in_prompt_and_pin_tool(app_client):
         assert result.ok
         assert ctx.inverse_patches  # retcon can restore the previous list
 
+        # …and the retcon applier actually restores it.
+        from app.api.dm import _apply_inverse_patch
+
+        await _apply_inverse_patch(db, ctx.inverse_patches[0])
+        await db.commit()
+        assert c.settings_json["pinned_facts"] == ["The moon over Barrowdown is always red."]
+
+        result = await registry.dispatch(ctx, "pin_fact", {"fact": "Rowan owes the party 50gp"})
+        assert result.ok
+
         # case-insensitive dedupe
         result = await registry.dispatch(ctx, "pin_fact", {"fact": "rowan owes the party 50gp"})
         assert result.ok and result.data.get("note") == "already pinned"

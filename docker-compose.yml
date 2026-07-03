@@ -19,6 +19,8 @@ services:
   ollama:
     image: ollama/ollama:latest
     profiles: ["ollama"]
+    ports:
+      - "127.0.0.1:11434:11434" # loopback only — lets host-side dev servers reuse it
     volumes:
       - ollama:/root/.ollama
     restart: unless-stopped
@@ -32,7 +34,8 @@ services:
     environment:
       OLLAMA_HOST: http://ollama:11434
     entrypoint: >
-      sh -c "sleep 3 && ollama pull llama3.1 && ollama pull nomic-embed-text"
+      sh -c "until ollama list >/dev/null 2>&1; do sleep 2; done;
+      ollama pull llama3.1 && ollama pull nomic-embed-text"
     restart: "no"
 
 volumes:
