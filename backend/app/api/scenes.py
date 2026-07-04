@@ -199,12 +199,14 @@ def _transcript_line(msg: Message, char_names: dict[str, str]) -> str | None:
     if not content:
         return None
 
+    # Tool-result chips and system beats are mechanics, not a speaker's line.
+    if msg.kind in ("tool_result", "system") or msg.author_type in ("tool", "system"):
+        return f"`{ts}` _{content}_"
+
     if msg.kind == "whisper":
         who = "**DM → AI (whisper)**"
     elif msg.author_type == "ai":
         who = "**DM**"
-    elif msg.author_type == "system":
-        who = "_system_"
     elif speaker:
         # spoken in-character as a PC — show the character, whoever controls them
         who = f"**{speaker}**"

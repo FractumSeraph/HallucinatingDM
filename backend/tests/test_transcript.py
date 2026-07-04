@@ -49,6 +49,26 @@ async def test_transcript_is_readable_and_complete(app_client):
     set_provider(None)
 
 
+async def test_tool_result_chips_are_not_labeled_as_players(app_client):
+    campaign, scene, character = await setup_game(app_client)
+
+    from app.db import get_sessionmaker
+    from app.models import Scene
+    from app.services.messages import create_message
+
+    async with get_sessionmaker()() as db:
+        s = await db.get(Scene, scene["id"])
+        await create_message(
+            db, s, author_type="tool", kind="tool_result",
+            content="📜 Quest started: Deliver the tube", broadcast=False,
+        )
+
+    body = (await app_client.get(f"/api/v1/scenes/{scene['id']}/transcript")).text
+    # Rendered as an italic mechanics note, never attributed to a "Player".
+    assert "_📜 Quest started: Deliver the tube_" in body
+    assert "Player**: 📜" not in body
+
+
 async def test_transcript_hides_dm_content_from_players(app_client):
     campaign, scene, character = await setup_game(app_client)
     await app_client.post(
