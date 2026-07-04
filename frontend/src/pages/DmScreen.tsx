@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useCampaign } from '../api/hooks'
-import type { PendingApproval, Scene } from '../api/types'
+import type { Location, PendingApproval, Scene } from '../api/types'
 import { useScenes } from '../components/SceneList'
 import { DocumentsPanel } from './SearchPage'
 import { useLiveCache } from '../ws/useLiveCache'
@@ -35,6 +35,10 @@ export function DmScreen() {
         <section className="card">
           <h3>Scenes & AI mode</h3>
           <SceneModePanel campaignId={cid} />
+        </section>
+        <section className="card">
+          <h3>Scene prep</h3>
+          <ScenePrepPanel campaignId={cid} />
         </section>
         <section className="card">
           <h3>Pinned facts</h3>
@@ -137,6 +141,124 @@ function SceneModePanel({ campaignId }: { campaignId: string }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+interface ScenePrep {
+  dm_notes: string
+  time_note: string
+  location_id: string | null
+}
+
+function ScenePrepPanel({ campaignId }: { campaignId: string }) {
+  const { data: scenes } = useScenes(campaignId)
+  const [openId, setOpenId] = useState<string | null>(null)
+
+  if (!scenes?.length) return <p className="muted">No scenes yet.</p>
+  return (
+    <div className="col">
+      <p className="muted" style={{ fontSize: '0.82rem', marginTop: 0 }}>
+        Secret prep for a scene — notes and the place it happens. The AI honors this and
+        reveals it only through play; players never see the notes.
+      </p>
+      <ul className="plain-list">
+        {scenes.map((s) => (
+          <li key={s.id} className="col" style={{ gap: '0.4rem' }}>
+            <div className="row">
+              <span className="grow">{s.name}</span>
+              <button onClick={() => setOpenId(openId === s.id ? null : s.id)}>
+                {openId === s.id ? 'Close' : 'Prep'}
+              </button>
+            </div>
+            {openId === s.id && (
+              <ScenePrepEditor
+                campaignId={campaignId}
+                sceneId={s.id}
+                onSaved={() => setOpenId(null)}
+              />
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function ScenePrepEditor({
+  campaignId,
+  sceneId,
+  onSaved,
+}: {
+  campaignId: string
+  sceneId: string
+  onSaved: () => void
+}) {
+  const qc = useQueryClient()
+  const { data: prep } = useQuery<ScenePrep>({
+    queryKey: ['scenes', sceneId, 'prep'],
+    queryFn: () => api.get(`/scenes/${sceneId}/prep`),
+  })
+  const { data: world } = useQuery<{ locations: Location[] }>({
+    queryKey: ['campaigns', campaignId, 'world'],
+    queryFn: () => api.get(`/campaigns/${campaignId}/world`),
+  })
+  const [notes, setNotes] = useState<string | null>(null)
+  const [time, setTime] = useState<string | null>(null)
+  const [loc, setLoc] = useState<string | null>(null)
+
+  // Seed local state once the current prep loads.
+  const notesVal = notes ?? prep?.dm_notes ?? ''
+  const timeVal = time ?? prep?.time_note ?? ''
+  const locVal = loc ?? prep?.location_id ?? ''
+
+  async function save() {
+    await api.patch(`/scenes/${sceneId}`, {
+      dm_notes: notesVal,
+      time_note: timeVal,
+      location_id: locVal, // "" clears
+    })
+    await qc.invalidateQueries({ queryKey: ['scenes', sceneId, 'prep'] })
+    onSaved()
+  }
+
+  if (!prep) return <p className="muted">Loading…</p>
+  return (
+    <div className="card col" style={{ gap: '0.5rem', background: 'var(--bg-inset)' }}>
+      <label className="col" style={{ gap: '0.2rem' }}>
+        <span className="muted secret-label" style={{ fontSize: '0.8rem' }}>
+          🔒 Secret prep notes — dangers, hidden agendas, what waits here
+        </span>
+        <textarea rows={3} value={notesVal} onChange={(e) => setNotes(e.target.value)} />
+      </label>
+      <label className="col" style={{ gap: '0.2rem' }}>
+        <span className="muted" style={{ fontSize: '0.8rem' }}>
+          When (time note)
+        </span>
+        <input
+          value={timeVal}
+          placeholder="e.g. dusk, the next morning"
+          onChange={(e) => setTime(e.target.value)}
+        />
+      </label>
+      <label className="col" style={{ gap: '0.2rem' }}>
+        <span className="muted" style={{ fontSize: '0.8rem' }}>
+          Location (bind a place you prepped, so its notes activate here)
+        </span>
+        <select value={locVal} onChange={(e) => setLoc(e.target.value)}>
+          <option value="">— none —</option>
+          {world?.locations.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="row">
+        <button className="btn-primary" onClick={save}>
+          Save prep
+        </button>
+      </div>
+    </div>
   )
 }
 

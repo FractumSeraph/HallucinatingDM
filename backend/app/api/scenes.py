@@ -13,7 +13,7 @@ from app.api.deps import (
     require_campaign_member,
 )
 from app.api.errors import bad_request, forbidden, not_found
-from app.models import Campaign, Character, Message, Scene
+from app.models import Campaign, Character, Location, Message, Scene
 from app.realtime import events
 from app.realtime.hub import hub
 from app.services import dice as dice_service
@@ -34,6 +34,17 @@ class ScenePatch(BaseModel):
     dm_mode: str | None = Field(default=None, pattern="^(human|assist|copilot|ai)$")
     dm_notes: str | None = None
     time_note: str | None = None
+    # "" clears the scene's location; a real id sets it; None leaves it unchanged.
+    location_id: str | None = None
+
+
+class ScenePrepOut(BaseModel):
+    """DM-only editable prep for a scene — dm_notes is secret, so it is not part
+    of the members-visible SceneOut."""
+
+    dm_notes: str
+    time_note: str
+    location_id: str | None
 
 
 class SceneOut(BaseModel):
@@ -114,6 +125,21 @@ async def create_scene(
     return scene
 
 
+@router.get("/scenes/{scene_id}/prep", response_model=ScenePrepOut)
+async def get_scene_prep(
+    scene_id: str, db: DbSession, user: CurrentUser
+) -> ScenePrepOut:
+    """The DM's secret prep for a scene (notes/time/location) so it can be
+    edited. DM-only — dm_notes must never reach players."""
+    scene = await db.get(Scene, scene_id)
+    if not scene:
+        raise not_found("Scene")
+    await require_campaign_dm(scene.campaign_id, db, user)
+    return ScenePrepOut(
+        dm_notes=scene.dm_notes, time_note=scene.time_note, location_id=scene.location_id
+    )
+
+
 @router.patch("/scenes/{scene_id}", response_model=SceneOut)
 async def update_scene(
     scene_id: str, body: ScenePatch, db: DbSession, user: CurrentUser
@@ -128,6 +154,14 @@ async def update_scene(
         value = getattr(body, field_name)
         if value is not None:
             setattr(scene, field_name, value)
+    if body.location_id is not None:
+        if body.location_id == "":
+            scene.location_id = None
+        else:
+            loc = await db.get(Location, body.location_id)
+            if not loc or loc.campaign_id != scene.campaign_id:
+                raise bad_request("Unknown location for this campaign")
+            scene.location_id = body.location_id
     await db.commit()
 
     # A DM ending a scene by hand still gets a recap (the AI path does this

@@ -57,52 +57,145 @@ export function WorldPage() {
   )
 }
 
-function CreateForm({
+// Per-kind field layout for the DM editor. `secret` fields are the 🔒 prep
+// only the DM sees and the AI honors; they're the whole point of prepping
+// a place and its people before the party arrives.
+type EntityRow = Record<string, unknown> & { id?: string }
+// The world entity types are readable records; view one as a keyed row for the editor.
+const asRow = (o: object): EntityRow => o as unknown as EntityRow
+
+type FieldDef = { key: string; label: string; area?: boolean; secret?: boolean; options?: string[] }
+const ENTITY_FIELDS: Record<string, FieldDef[]> = {
+  location: [
+    { key: 'kind', label: 'Type', options: ['settlement', 'region', 'dungeon', 'building', 'room', 'wilderness', 'world'] },
+    { key: 'description', label: 'Description (players may learn this)', area: true },
+    { key: 'dm_notes', label: '🔒 Secret DM notes — dangers, twists, what waits here', area: true, secret: true },
+  ],
+  npc: [
+    { key: 'role', label: 'Role / occupation' },
+    { key: 'disposition', label: 'Disposition', options: ['friendly', 'neutral', 'wary', 'hostile'] },
+    { key: 'description', label: 'Description (players may learn this)', area: true },
+    { key: 'secrets', label: "🔒 Secrets — reveal only through play", area: true, secret: true },
+  ],
+  faction: [
+    { key: 'description', label: 'Description', area: true },
+    { key: 'goals', label: 'Goals', area: true },
+    { key: 'dm_notes', label: '🔒 Secret DM notes', area: true, secret: true },
+  ],
+  quest: [
+    { key: 'status', label: 'Status', options: ['rumored', 'active', 'completed', 'failed'] },
+    { key: 'summary', label: 'Summary (the party sees this)', area: true },
+    { key: 'dm_notes', label: '🔒 Hidden twist — the truth behind the quest', area: true, secret: true },
+  ],
+}
+
+/** Create or edit a world entity with all of its DM-only fields. `existing`
+ * (with an id) switches the form into edit mode and PATCHes instead. */
+function EntityEditor({
   campaignId,
   kind,
-  extraFields,
+  existing,
+  onDone,
 }: {
   campaignId: string
   kind: string
-  extraFields?: Record<string, string>
+  existing?: Record<string, unknown> & { id?: string }
+  onDone?: () => void
 }) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
+  const nameKey = kind === 'quest' ? 'title' : 'name'
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = { [nameKey]: String(existing?.[nameKey] ?? '') }
+    for (const f of ENTITY_FIELDS[kind]) init[f.key] = String(existing?.[f.key] ?? '')
+    return init
+  })
   const qc = useQueryClient()
+  const editing = Boolean(existing?.id)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
-    if (!name.trim()) return
-    const fields: Record<string, unknown> = { ...extraFields, description }
-    if (kind === 'quest') {
-      fields.title = name
-      fields.summary = description
-      delete fields.description
+    if (!values[nameKey]?.trim()) return
+    const fields = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== ''))
+    if (editing) {
+      await api.patch(`/world/${kind}/${existing!.id}`, { fields })
     } else {
-      fields.name = name
+      await api.post(`/campaigns/${campaignId}/world/${kind}`, { fields })
+      setValues((v) => Object.fromEntries(Object.keys(v).map((k) => [k, ''])))
     }
-    await api.post(`/campaigns/${campaignId}/world/${kind}`, { fields })
-    setName('')
-    setDescription('')
     await qc.invalidateQueries({ queryKey: ['campaigns', campaignId, 'world'] })
+    onDone?.()
   }
 
+  const set = (k: string, v: string) => setValues((prev) => ({ ...prev, [k]: v }))
+
   return (
-    <form onSubmit={submit} className="row card" style={{ marginTop: '0.75rem', flexWrap: 'wrap' }}>
+    <form onSubmit={submit} className="card col" style={{ marginTop: '0.75rem', gap: '0.5rem' }}>
       <input
-        placeholder={`New ${kind} name…`}
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        style={{ maxWidth: 220 }}
+        placeholder={`${kind} ${nameKey}…`}
+        value={values[nameKey]}
+        onChange={(e) => set(nameKey, e.target.value)}
+        required
       />
-      <input
-        placeholder="Description"
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        className="grow"
-      />
-      <button>Add</button>
+      {ENTITY_FIELDS[kind].map((f) => (
+        <label key={f.key} className="col" style={{ gap: '0.2rem' }}>
+          <span className={f.secret ? 'muted secret-label' : 'muted'} style={{ fontSize: '0.8rem' }}>
+            {f.label}
+          </span>
+          {f.options ? (
+            <select value={values[f.key]} onChange={(e) => set(f.key, e.target.value)}>
+              <option value="">—</option>
+              {f.options.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          ) : f.area ? (
+            <textarea rows={2} value={values[f.key]} onChange={(e) => set(f.key, e.target.value)} />
+          ) : (
+            <input value={values[f.key]} onChange={(e) => set(f.key, e.target.value)} />
+          )}
+        </label>
+      ))}
+      <div className="row">
+        <button className="btn-primary" type="submit">
+          {editing ? 'Save' : `Add ${kind}`}
+        </button>
+        {editing && onDone && (
+          <button type="button" onClick={onDone}>
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
+  )
+}
+
+/** Toggling "＋ Add" / "Edit" affordance wrapping the EntityEditor. */
+function EditToggle({
+  campaignId,
+  kind,
+  existing,
+  label,
+}: {
+  campaignId: string
+  kind: string
+  existing?: Record<string, unknown> & { id?: string }
+  label: string
+}) {
+  const [open, setOpen] = useState(false)
+  if (!open)
+    return (
+      <button className="btn" style={{ marginTop: '0.5rem' }} onClick={() => setOpen(true)}>
+        {label}
+      </button>
+    )
+  return (
+    <EntityEditor
+      campaignId={campaignId}
+      kind={kind}
+      existing={existing}
+      onDone={() => setOpen(false)}
+    />
   )
 }
 
@@ -130,6 +223,9 @@ function LocationTree({
               🔒 {loc.dm_notes}
             </p>
           )}
+          {isDm && (
+            <EditToggle campaignId={campaignId} kind="location" existing={asRow(loc)} label="Edit" />
+          )}
         </div>
         {children(loc.id).map((c) => render(c, depth + 1))}
       </div>
@@ -142,7 +238,7 @@ function LocationTree({
         <p className="muted">No places charted yet — the AI DM saves everywhere the party goes.</p>
       )}
       {roots.map((l) => render(l, 0))}
-      {isDm && <CreateForm campaignId={campaignId} kind="location" extraFields={{ kind: 'settlement' }} />}
+      {isDm && <EditToggle campaignId={campaignId} kind="location" label="＋ Add place" />}
     </div>
   )
 }
@@ -166,10 +262,11 @@ function NpcList({ campaignId, npcs, isDm }: { campaignId: string; npcs: NPC[]; 
                 🔒 {n.secrets}
               </p>
             )}
+            {isDm && <EditToggle campaignId={campaignId} kind="npc" existing={asRow(n)} label="Edit" />}
           </div>
         ))}
       </div>
-      {isDm && <CreateForm campaignId={campaignId} kind="npc" />}
+      {isDm && <EditToggle campaignId={campaignId} kind="npc" label="＋ Add NPC" />}
     </div>
   )
 }
@@ -201,10 +298,11 @@ function FactionList({
                 🔒 {f.dm_notes}
               </p>
             )}
+            {isDm && <EditToggle campaignId={campaignId} kind="faction" existing={asRow(f)} label="Edit" />}
           </div>
         ))}
       </div>
-      {isDm && <CreateForm campaignId={campaignId} kind="faction" />}
+      {isDm && <EditToggle campaignId={campaignId} kind="faction" label="＋ Add faction" />}
     </div>
   )
 }
@@ -250,9 +348,10 @@ function QuestList({
               🔒 {q.dm_notes}
             </p>
           )}
+          {isDm && <EditToggle campaignId={campaignId} kind="quest" existing={asRow(q)} label="Edit" />}
         </div>
       ))}
-      {isDm && <CreateForm campaignId={campaignId} kind="quest" />}
+      {isDm && <EditToggle campaignId={campaignId} kind="quest" label="＋ Add quest" />}
     </div>
   )
 }
