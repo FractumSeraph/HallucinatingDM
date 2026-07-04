@@ -427,6 +427,8 @@ input:focus, textarea:focus, select:focus {
 }
 .party-row:hover { border-color: var(--accent); text-decoration: none; }
 
+.secret-label { color: var(--gold); }
+
 .quest-row {
   border: 1px solid var(--border);
   border-radius: var(--radius);
