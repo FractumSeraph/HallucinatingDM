@@ -156,6 +156,14 @@ export function GameView() {
             ✨<span className="hide-sm"> Continue</span>
           </button>
         )}
+        {isDm && scene && scene.dm_mode !== 'human' && (
+          <button
+            title="Resolve the round now, skipping anyone who hasn't acted"
+            onClick={() => api.post(`/scenes/${sid}/resolve-turn`).catch(() => {})}
+          >
+            ▶<span className="hide-sm"> Resolve</span>
+          </button>
+        )}
         {isDm && (
           <button
             className="btn-danger"
@@ -398,6 +406,16 @@ function Composer({
             >
               🎲
             </button>
+            {!isDm && (
+              <button
+                type="button"
+                className="dice-toggle"
+                title="Hold this round — let the turn resolve without you"
+                onClick={() => api.post(`/scenes/${sceneId}/skip-turn`).catch(() => {})}
+              >
+                ⏭
+              </button>
+            )}
             <label className="muted ooc-toggle">
               <input type="checkbox" checked={ooc} onChange={(e) => setOoc(e.target.checked)} />
               OOC

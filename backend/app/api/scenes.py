@@ -327,7 +327,7 @@ async def post_message(
 
     from app.ai.trigger import maybe_trigger_ai_turn
 
-    await maybe_trigger_ai_turn(scene, msg)
+    await maybe_trigger_ai_turn(scene, msg, db)
 
     # Human-run scenes never take AI turns, so the rolling summarizer is kicked
     # from here once the unsummarized backlog is long enough (the AI/assist/
@@ -338,6 +338,47 @@ async def post_message(
         if msg.seq - scene.summary_upto_seq >= memory.SUMMARIZE_EVERY:
             asyncio.get_running_loop().create_task(memory.rollup_scene_by_id(scene.id))
     return message_out(msg)
+
+
+@router.post("/scenes/{scene_id}/skip-turn")
+async def skip_turn(scene_id: str, db: DbSession, user: CurrentUser) -> dict[str, bool]:
+    """A player declares they hold this round — counts as their declaration so
+    the round can resolve without waiting on them."""
+    scene = await _get_scene_for_member(scene_id, db, user)
+    character = (
+        await db.execute(
+            select(Character).where(
+                Character.campaign_id == scene.campaign_id,
+                Character.user_id == user.id,
+                Character.status == "active",
+            )
+        )
+    ).scalars().first()
+    if not character:
+        raise bad_request("No active character to hold with")
+
+    from app.ai.trigger import note_skip
+
+    await create_message(
+        db, scene, author_type="system", kind="system", content=f"{character.name} holds."
+    )
+    await note_skip(db, scene, character.id)
+    return {"ok": True}
+
+
+@router.post("/scenes/{scene_id}/resolve-turn")
+async def resolve_turn(scene_id: str, db: DbSession, user: CurrentUser) -> dict[str, bool]:
+    """DM forces the AI to resolve the round now, skipping anyone who hasn't
+    declared (for an AFK player)."""
+    scene = await db.get(Scene, scene_id)
+    if not scene:
+        raise not_found("Scene")
+    await require_campaign_dm(scene.campaign_id, db, user)
+
+    from app.ai.trigger import resolve_now
+
+    resolve_now(scene_id)
+    return {"ok": True}
 
 
 @router.post("/scenes/{scene_id}/suggest-actions")
