@@ -8,6 +8,30 @@ The AI can fully run the game, co-pilot alongside the human DM, or just draft su
 Players drop in and out freely and can run **solo side adventures** with the AI DM while
 the main table is idle — all in one persistent, shared world.
 
+### How it's built to dodge the usual AI-DM pain points
+
+The common complaints about hosted AI game masters, and how this design answers each:
+
+- **"It costs credits, and combat burns them fast."** Self-hosted on your own model —
+  no per-turn credits, no metering, unlimited play. Combat costs nothing extra.
+- **"It forgets what happened / needs constant reminding."** Scenes self-summarize, a
+  campaign "story so far" rolls up automatically, and every turn keyword-recalls
+  relevant past events, chat, and NPCs into the prompt. The DM can pin facts the AI may
+  never forget.
+- **"You have to already know which die to roll and how to read a 5e sheet."** You never
+  pick a die — when a check is needed a **🎲 Roll** button appears and the server applies
+  your real modifiers. The AI translates plain words into mechanics, and 💡 suggests
+  actions for stuck players.
+- **"It railroads you and ignores what you're trying to do."** The DM is instructed to
+  pursue the goal the player actually stated and never hijack the scene toward its own
+  hook.
+- **"It's a repetitive yes-man with no stakes."** Explicit anti-repetition guidance (no
+  recurring verbal tics) and a mandate that choices carry real, visible consequences —
+  paired with fail-forward so setbacks open new paths.
+- **"An AI can't replace a human DM's judgment."** True — so a human can take the wheel
+  anytime via Copilot/Assist/Human modes, one-click Retcon, and private `/whisper`
+  steering.
+
 ## Features
 
 - **AI Dungeon Master** — narrates, voices NPCs, adjudicates 5E rules, and *acts* through
