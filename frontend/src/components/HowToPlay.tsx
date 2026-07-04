@@ -18,8 +18,10 @@ export function HowToPlay({ onClose }: { onClose: () => void }) {
           </p>
           <p style={{ margin: 0 }}>
             <strong>Say what you try, not what happens.</strong> "I swing at the goblin"
-            works; "I kill the goblin" doesn't — the dice decide outcomes, and the DM only
-            counts gear that's actually on your sheet. Attempts, not results.
+            works; "I kill the goblin" doesn't — the dice decide outcomes. Real gear
+            (weapons, potions, gold) comes from your sheet, but improvising with things
+            you'd plausibly have — bootlaces, a strip torn from your shirt — is fair game
+            and good play.
           </p>
           <p style={{ margin: 0 }}>
             <strong>Stuck?</strong> Tap <strong>💡</strong> next to the message box for
