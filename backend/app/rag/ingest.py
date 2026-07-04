@@ -14,7 +14,7 @@ from app.rag.embedder import embed_documents, store_vectors
 from app.realtime import events
 from app.realtime.hub import hub
 
-log = logging.getLogger("hallucinatingdm.rag")
+log = logging.getLogger("landl.rag")
 
 
 def extract_pdf_pages(path: Path) -> list[PageText]:

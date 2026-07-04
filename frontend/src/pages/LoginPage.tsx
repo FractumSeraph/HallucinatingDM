@@ -38,7 +38,7 @@ export function LoginPage({ mode }: { mode: 'login' | 'register' }) {
   return (
     <div className="auth-page">
       <div className="auth-card card">
-        <h1>HallucinatingDM</h1>
+        <h1>Labyrinths and Llamas</h1>
         <p className="muted">Your table. Your rules. An AI that never sleeps.</p>
         <form onSubmit={submit} className="col">
           {mode === 'register' && (

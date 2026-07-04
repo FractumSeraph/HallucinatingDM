@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import NPC, Faction, Location, Quest
 
-log = logging.getLogger("hallucinatingdm.retrieval")
+log = logging.getLogger("landl.retrieval")
 
 MAX_SNIPPETS = 6
 SNIPPET_CHARS = 240

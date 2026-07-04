@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from app.db import get_sessionmaker
 from app.models import SrdEntry
 
-log = logging.getLogger("hallucinatingdm.seed")
+log = logging.getLogger("landl.seed")
 
 SRD_DIR = Path(__file__).resolve().parent / "srd"
 

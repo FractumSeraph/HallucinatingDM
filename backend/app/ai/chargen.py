@@ -16,7 +16,7 @@ from app.ai.toolcall_fallback import repair_json
 from app.models import SrdEntry
 from app.services.character_builder import BuildError, CharacterBuild, build_character
 
-log = logging.getLogger("hallucinatingdm.chargen")
+log = logging.getLogger("landl.chargen")
 
 MAX_ATTEMPTS = 3
 

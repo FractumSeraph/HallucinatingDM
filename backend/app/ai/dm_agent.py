@@ -25,7 +25,7 @@ from app.realtime import events
 from app.realtime.hub import hub
 from app.services.messages import create_message, message_out
 
-log = logging.getLogger("hallucinatingdm.agent")
+log = logging.getLogger("landl.agent")
 
 
 def held_for_approval_result(approval_id: str) -> ToolResult:

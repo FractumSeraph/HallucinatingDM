@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-log = logging.getLogger("hallucinatingdm.llm")
+log = logging.getLogger("landl.llm")
 
 
 @dataclass

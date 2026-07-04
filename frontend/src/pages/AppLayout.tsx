@@ -13,7 +13,7 @@ export function AppLayout() {
     <div className="app-shell">
       <header className="topbar">
         <Link to="/campaigns" className="brand">
-          🎲 HallucinatingDM
+          🦙 Labyrinths and Llamas
         </Link>
         <div className="row">
           {me.is_admin && (
