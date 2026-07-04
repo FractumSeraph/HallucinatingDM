@@ -427,6 +427,16 @@ input:focus, textarea:focus, select:focus {
 }
 .party-row:hover { border-color: var(--accent); text-decoration: none; }
 
+.quest-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.45rem 0.55rem;
+  font-size: 0.85rem;
+}
+.quest-summary { font-size: 0.8rem; margin-top: 0.15rem; }
+.quest-objectives { gap: 0.15rem; margin-top: 0.3rem; font-size: 0.8rem; }
+.quest-objectives .objective-done { color: var(--success); opacity: 0.75; }
+
 /* --- Combat panel ---------------------------------------------------------------- */
 .combat-panel { border: 1px solid var(--danger); border-radius: var(--radius); padding: 0.6rem; }
 .combatant-row {

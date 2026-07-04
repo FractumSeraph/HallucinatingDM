@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Campaign, Scene
 
-log = logging.getLogger("hallucinatingdm.tools")
+log = logging.getLogger("landl.tools")
 
 
 @dataclass

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.provider import TextDelta, get_provider
 from app.models import Campaign, Message, Scene, Summary
 
-log = logging.getLogger("hallucinatingdm.memory")
+log = logging.getLogger("landl.memory")
 
 SUMMARIZE_EVERY = 40  # messages between rolling re-summaries
 ROLLUP_EVERY = 5  # scene summaries between campaign "story so far" refreshes
@@ -97,6 +97,20 @@ async def summarize_scene(
         Summary(campaign_id=campaign.id, scope="scene", ref_id=scene.id, content=summary)
     )
     await db.commit()
+
+    # Let open clients refresh scene lists and "Previously on…" recaps.
+    from app.api.scenes import SceneOut
+    from app.realtime import events
+    from app.realtime.hub import hub
+
+    hub.broadcast(
+        campaign.id,
+        events.make_event(
+            events.SCENE_UPDATED, campaign.id,
+            SceneOut.model_validate(scene).model_dump(), scene.id,
+        ),
+    )
+
     await maybe_rollup_campaign(db, campaign)
     return summary
 

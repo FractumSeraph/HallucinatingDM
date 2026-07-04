@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.provider import get_provider
 from app.models import EmbeddingConfig
 
-log = logging.getLogger("hallucinatingdm.rag")
+log = logging.getLogger("landl.rag")
 
 BATCH_SIZE = 32
 

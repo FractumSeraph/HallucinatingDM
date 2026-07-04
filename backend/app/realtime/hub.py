@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
-log = logging.getLogger("hallucinatingdm.hub")
+log = logging.getLogger("landl.hub")
 
 QUEUE_SIZE = 256
 

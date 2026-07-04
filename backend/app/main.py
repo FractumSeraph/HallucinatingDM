@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 
-log = logging.getLogger("hallucinatingdm")
+log = logging.getLogger("landl")
 logging.basicConfig(level=logging.INFO)
 
 
@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="HallucinatingDM", lifespan=lifespan)
+    app = FastAPI(title="Labyrinths and Llamas", lifespan=lifespan)
 
     from app.api import api_router
     from app.api.ws import router as ws_router

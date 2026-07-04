@@ -8,7 +8,7 @@ from app.models import Scene, User
 from app.realtime.hub import Connection, hub
 from app.services.auth_service import COOKIE_NAME, decode_access_token
 
-log = logging.getLogger("hallucinatingdm.ws")
+log = logging.getLogger("landl.ws")
 
 router = APIRouter()
 

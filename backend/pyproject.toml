@@ -1,5 +1,5 @@
 [project]
-name = "hallucinating-dm"
+name = "labyrinths-and-llamas"
 version = "0.1.0"
 description = "Self-hosted LLM-powered multiplayer D&D 5E platform"
 requires-python = ">=3.11"

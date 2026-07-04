@@ -1,4 +1,4 @@
-# 🎲 HallucinatingDM
+# 🦙 Labyrinths and Llamas
 
 A **self-hosted, LLM-powered multiplayer D&D 5E platform** — think Friends & Fables, but
 running on your own hardware with **Ollama** or any OpenAI-compatible API.
@@ -50,7 +50,7 @@ All you need is **Docker** (with Compose). For running from source instead, see
 **1. Clone and configure**
 
 ```bash
-git clone <this repo> && cd HallucinatingDM
+git clone <this repo> && cd HallucinatingDM   # repo name unchanged
 cp .env.example .env
 ```
 
@@ -250,4 +250,4 @@ for retcon. Full design notes in `docs/`.
 
 Game content from the **SRD 5.1** by Wizards of the Coast LLC, used under the
 **Creative Commons Attribution 4.0** license — see `backend/app/seed/srd/LICENSE.md`.
-HallucinatingDM is an independent project, not affiliated with Wizards of the Coast.
+Labyrinths and Llamas is an independent project, not affiliated with Wizards of the Coast.

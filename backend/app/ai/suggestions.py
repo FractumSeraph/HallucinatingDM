@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Character, Message, Scene
 
-log = logging.getLogger("hallucinatingdm.suggestions")
+log = logging.getLogger("landl.suggestions")
 
 MAX_SUGGESTIONS = 4
 

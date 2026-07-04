@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Chunk, Document
 from app.rag.embedder import embed_query, get_embedding_config, serialize_f32
 
-log = logging.getLogger("hallucinatingdm.rag")
+log = logging.getLogger("landl.rag")
 
 CANDIDATES = 20
 RRF_K = 60
