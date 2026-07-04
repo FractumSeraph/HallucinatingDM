@@ -34,7 +34,15 @@ body {
 }
 
 .app-shell { height: 100%; display: flex; flex-direction: column; }
+/* Track the *visible* viewport on mobile browsers so the chat composer is
+   never hidden behind the collapsing URL bar. */
+@supports (height: 100dvh) {
+  .app-shell { height: 100dvh; }
+}
 .page-pad { padding: 2rem; }
+@media (max-width: 600px) {
+  .page-pad { padding: 1.25rem 1rem; }
+}
 
 h1, h2, h3 { font-family: var(--font-display); font-weight: 600; }
 
@@ -74,6 +82,11 @@ input, textarea, select {
 input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--accent);
+}
+/* iOS Safari auto-zooms into inputs below 16px — keep them at 16px on touch
+   screens so focusing the chat box never zooms the page. */
+@media (max-width: 820px) {
+  input, textarea, select { font-size: 16px; }
 }
 
 .card {
@@ -177,6 +190,18 @@ input:focus, textarea:focus, select:focus {
   border-bottom: 1px solid var(--border);
   background: var(--bg-raised);
 }
+.game-header h2 { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 820px) {
+  .game-header { gap: 0.5rem; padding: 0.4rem 0.6rem; }
+  .game-header h2 { font-size: 1.05rem; }
+  .game-header > a {
+    flex-shrink: 0;
+    max-width: 6.5rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
 .game-body { flex: 1; display: flex; min-height: 0; }
 .game-chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .message-list {
@@ -239,9 +264,10 @@ input:focus, textarea:focus, select:focus {
   overflow-y: auto;
   flex-shrink: 0;
 }
-.game-rail-closed { width: 2rem; padding: 0.25rem; }
-.rail-toggle { position: absolute; top: 0.4rem; left: 0.25rem; padding: 0.1rem 0.45rem; }
-.game-rail > :not(.rail-toggle) { margin-top: 2rem; }
+.game-rail-closed { width: 2.4rem; padding: 0.25rem; }
+.rail-toggle { position: absolute; top: 0.4rem; left: 0.25rem; padding: 0.3rem 0.55rem; }
+.game-rail > :not(.rail-toggle) { margin-top: 2.4rem; }
+.rail-backdrop { display: none; }
 
 .scene-row {
   display: flex;
@@ -259,11 +285,53 @@ input:focus, textarea:focus, select:focus {
 .badge-mode-human { border-color: var(--gold); color: var(--gold); }
 
 @media (max-width: 820px) {
-  .game-rail { position: fixed; right: 0; top: 3rem; bottom: 0; z-index: 50; box-shadow: -8px 0 24px rgba(0,0,0,0.5); }
-  .game-rail-closed { position: static; box-shadow: none; }
+  /* Open rail becomes a right-side drawer over a dimmed backdrop… */
+  .rail-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 55;
+  }
+  .game-rail {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 60;
+    width: min(320px, 85vw);
+    box-shadow: -8px 0 24px rgba(0,0,0,0.5);
+  }
+  /* …and the closed rail collapses to a floating ⚔️ button above the composer
+     (a static strip would strand its absolutely-positioned toggle in the
+     viewport corner, on top of the topbar). */
+  .game-rail-closed {
+    top: auto;
+    left: auto;
+    right: 0.85rem;
+    bottom: 8.5rem;
+    width: auto;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg-raised);
+    box-shadow: 0 2px 14px rgba(0,0,0,0.55);
+    overflow: visible;
+  }
+  .game-rail-closed .rail-toggle {
+    position: static;
+    border: none;
+    background: transparent;
+    padding: 0.6rem 0.75rem;
+    font-size: 1.05rem;
+    line-height: 1;
+  }
 }
 
 /* --- Character wizard & sheet ------------------------------------------------- */
+/* Let the AI-concept input claim a full row (wrapping the button below it)
+   instead of shrinking to a sliver on narrow screens. */
+.wizard .card.row input.grow { flex: 1 1 220px; min-width: 0; }
 .wizard-steps { display: flex; gap: 0.4rem; margin: 1rem 0; flex-wrap: wrap; }
 .wizard-step { opacity: 0.55; }
 .wizard-step.active { opacity: 1; border-color: var(--accent); }
