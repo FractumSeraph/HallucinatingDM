@@ -44,4 +44,12 @@ async def test_prompt_carries_behavioral_guidance(app_client):
     # Narration must honor the die — no success on a failed roll.
     assert "Honor the die" in system
     assert "NEVER narrate a success on a failed check" in system
+    # Never voice or act for a player character.
+    assert "Do NOT invent their dialogue" in system
+    # Attacks roll to-hit vs AC before damage.
+    assert "Resolve attacks honestly" in system
+    assert 'roll_dice with kind="attack"' in system
+    # Action economy + turn discipline: no impossible/off-turn prompts.
+    assert "Respect the action economy" in system
+    assert "ONLY on their own turn" in system
     set_provider(None)
