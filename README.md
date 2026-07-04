@@ -159,6 +159,9 @@ writes the recap players see under **"Previously on…"** in the lobby.
      no fudging (the DM can't fudge either).
    - **OOC** checkbox for table talk; the AI ignores it.
    - You can't be forced: the AI never speaks or decides for your character.
+   - **New to D&D?** Tap **💡** for three ideas that fit the current moment, or **?**
+     in the scene header for a one-minute guide. Plain words are always enough — the
+     DM translates "I want to sneak past" into the right rules for you.
 4. **Solo adventures** — from the lobby, start a *solo adventure* anytime. The AI runs
    it, and consequences flow back into the shared world ("meanwhile, elsewhere…").
 5. **Your sheet** — live HP, conditions, spell slots, inventory, and currency, updated

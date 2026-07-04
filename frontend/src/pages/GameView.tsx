@@ -8,6 +8,7 @@ import { EVT, WsEvent } from '../types/events'
 import { useCampaignSocket } from '../ws/useCampaignSocket'
 import { MessageRow } from '../components/MessageRow'
 import { GameRail } from '../components/GameRail'
+import { HowToPlay } from '../components/HowToPlay'
 import { useCharacters } from '../components/CharacterList'
 import { useLiveCache } from '../ws/useLiveCache'
 
@@ -21,6 +22,7 @@ export function GameView() {
   const qc = useQueryClient()
   const [streams, setStreams] = useState<Record<string, StreamBuffer>>({})
   const [aiStatus, setAiStatus] = useState('')
+  const [showHelp, setShowHelp] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   useLiveCache(cid)
 
@@ -149,7 +151,7 @@ export function GameView() {
             title="Ask the AI DM to continue"
             onClick={() => api.post(`/scenes/${sid}/nudge`).catch(() => {})}
           >
-            ✨ Continue
+            ✨<span className="hide-sm"> Continue</span>
           </button>
         )}
         {isDm && (
@@ -161,14 +163,26 @@ export function GameView() {
                 api.post(`/scenes/${sid}/retcon-last-turn`).catch(() => {})
             }}
           >
-            ⎌ Retcon
+            ⎌<span className="hide-sm"> Retcon</span>
           </button>
         )}
+        <button title="How to play" aria-label="How to play" onClick={() => setShowHelp(true)}>
+          ?
+        </button>
       </header>
+      {showHelp && <HowToPlay onClose={() => setShowHelp(false)} />}
 
       <div className="game-body">
         <div className="game-chat">
           <div className="message-list" ref={listRef}>
+            {messages && messages.length === 0 && Object.keys(streams).length === 0 && (
+              <div className="card starter-hint muted">
+                <strong>The scene is set — you go first.</strong> Describe what your
+                character does, in plain words: <em>"I look around"</em>, <em>"I talk to
+                the innkeeper"</em>. The DM handles the rules. Stuck? Tap 💡 below for
+                ideas, or ? above for a quick guide.
+              </div>
+            )}
             {messages?.map((m) => (
               <MessageRow
                 key={m.id}
@@ -232,8 +246,26 @@ function Composer({
   const [text, setText] = useState('')
   const [ooc, setOoc] = useState(false)
   const [showDice, setShowDice] = useState(false)
+  const [ideas, setIdeas] = useState<string[]>([])
+  const [ideasBusy, setIdeasBusy] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+
+  async function fetchIdeas() {
+    if (ideasBusy) return
+    setIdeasBusy(true)
+    setError('')
+    try {
+      const res = await api.post<{ suggestions: string[] }>(
+        `/scenes/${sceneId}/suggest-actions`,
+      )
+      setIdeas(res.suggestions)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'No ideas right now — try anything!')
+    } finally {
+      setIdeasBusy(false)
+    }
+  }
 
   async function quickRoll(expression: string) {
     setError('')
@@ -279,6 +311,26 @@ function Composer({
   return (
     <form className="composer" onSubmit={submit}>
       {error && <div className="error-text">{error}</div>}
+      {ideas.length > 0 && (
+        <div className="idea-chips">
+          {ideas.map((s) => (
+            <button
+              key={s}
+              type="button"
+              title="Use this as a starting point — edit before sending"
+              onClick={() => {
+                setText(s)
+                setIdeas([])
+              }}
+            >
+              💡 {s}
+            </button>
+          ))}
+          <button type="button" className="idea-dismiss" onClick={() => setIdeas([])}>
+            ✕
+          </button>
+        </div>
+      )}
       {showDice && (
         <div className="dice-bar">
           {QUICK_ROLLS.map(([label, expression]) => (
@@ -317,6 +369,16 @@ function Composer({
             Send
           </button>
           <div className="row" style={{ gap: '0.4rem' }}>
+            <button
+              type="button"
+              className="dice-toggle"
+              title="Stuck? Get three ideas for what to do"
+              aria-label="Suggest actions"
+              disabled={ideasBusy}
+              onClick={fetchIdeas}
+            >
+              {ideasBusy ? '…' : '💡'}
+            </button>
             <button
               type="button"
               className={showDice ? 'dice-toggle dice-toggle-on' : 'dice-toggle'}

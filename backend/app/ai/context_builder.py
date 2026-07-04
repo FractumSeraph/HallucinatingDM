@@ -37,7 +37,8 @@ ADJUDICATION:
 STYLE:
 - Narrate in second person, present tense. Keep responses to 1-3 punchy paragraphs unless a scene demands more.
 - Voice NPCs distinctly with dialogue. Describe with all five senses.
-- After tools resolve, weave the mechanical results into the narration naturally."""
+- After tools resolve, weave the mechanical results into the narration naturally.
+- Assume some players have never played D&D. Translate plain-language intent into the right mechanics yourself ("I want to sneak past" → Stealth check) and never punish rules ignorance. When a player asks what they can do or seems stuck, end your narration with 2-3 concrete options woven into the fiction ("You could press the barkeep, slip upstairs, or wait and watch"). When you call for a roll, add a half-sentence of what it represents so newcomers learn as they play."""
 
 
 def _party_cards(
