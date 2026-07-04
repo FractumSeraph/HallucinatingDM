@@ -77,11 +77,24 @@ def _party_cards(
                 if sheet.get("personality")
                 else ""
             )
+            + _spells_line(sheet)
             # Always present — hard rule 8 treats this as the complete inventory,
             # so an empty pack must be stated, not omitted.
             + f". Carrying: {inventories.get(c.id) or '(nothing yet)'}"
         )
     return "\n".join(lines) if lines else "(no active characters yet)"
+
+
+def _spells_line(sheet: dict[str, Any]) -> str:
+    """Known spells from the sheet, so the AI knows a caster's kit without
+    asking the player (hard rule 8 applies to spells too)."""
+    spells = sheet.get("spells") or {}
+    parts = []
+    if spells.get("cantrips"):
+        parts.append("cantrips " + ", ".join(spells["cantrips"]))
+    if spells.get("known"):
+        parts.append("spells " + ", ".join(spells["known"]))
+    return f". Knows: {'; '.join(parts)}" if parts else ""
 
 
 MAX_INVENTORY_ITEMS = 8

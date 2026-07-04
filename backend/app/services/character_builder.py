@@ -31,6 +31,8 @@ class CharacterBuild(BaseModel):
     # Base scores before racial bonuses. Ignored for method="roll" (server rolls).
     base_scores: dict[str, int] = {}
     skill_choices: list[str] = []
+    cantrips: list[str] = []  # caster: chosen cantrips (level-0 spells)
+    spells: list[str] = []  # caster: chosen level-1 spells
     personality: str = ""
     backstory: str = ""
 
@@ -40,6 +42,54 @@ async def get_srd(db: AsyncSession, kind: str, slug: str) -> SrdEntry | None:
         select(SrdEntry).where(SrdEntry.kind == kind, SrdEntry.slug == slug.lower())
     )
     return result.scalar_one_or_none()
+
+
+async def class_spell_options(db: AsyncSession, class_name: str) -> dict[str, list[str]]:
+    """Level-0 and level-1 spell names available to a class, from the SRD."""
+    rows = list((await db.execute(select(SrdEntry).where(SrdEntry.kind == "spell"))).scalars())
+    cn = class_name.lower()
+    cantrips, level1 = [], []
+    for r in rows:
+        d = r.data_json
+        classes = [str(c).lower() for c in (d.get("classes") or [])]
+        if cn not in classes:
+            continue
+        if d.get("level") == 0:
+            cantrips.append(d.get("name", r.name))
+        elif d.get("level") == 1:
+            level1.append(d.get("name", r.name))
+    return {"cantrips": sorted(cantrips), "level1": sorted(level1)}
+
+
+async def _validate_spells(
+    db: AsyncSession, klass: SrdEntry, cantrips: list[str], spells: list[str]
+) -> dict[str, list[str]]:
+    """Validate a caster's chosen spells against the class list and level-1
+    known counts. Returns the stored {"cantrips","known"} or raises BuildError."""
+    from app.services.starting_kit import CASTER_SLOTS_L1
+
+    slug = klass.slug
+    if slug not in CASTER_SLOTS_L1:
+        if cantrips or spells:
+            raise BuildError(f"{klass.name} does not choose spells at level 1")
+        return {"cantrips": [], "known": []}
+
+    max_cantrips, max_spells = CASTER_SLOTS_L1[slug]
+    if len(cantrips) > max_cantrips:
+        raise BuildError(f"{klass.name} knows at most {max_cantrips} cantrips at level 1")
+    if len(spells) > max_spells:
+        raise BuildError(f"{klass.name} knows at most {max_spells} level-1 spells at level 1")
+
+    options = await class_spell_options(db, klass.name)
+    valid_cantrips = {c.lower() for c in options["cantrips"]}
+    valid_level1 = {s.lower() for s in options["level1"]}
+    for c in cantrips:
+        if c.lower() not in valid_cantrips:
+            raise BuildError(f"'{c}' is not a {klass.name} cantrip")
+    for s in spells:
+        if s.lower() not in valid_level1:
+            raise BuildError(f"'{s}' is not a level-1 {klass.name} spell")
+    return {"cantrips": list(cantrips), "known": list(spells)}
 
 
 def _roll_scores() -> dict[str, int]:
@@ -120,6 +170,12 @@ async def build_character(
         f for f in klass.data_json.get("features", []) if int(f.get("level", 99)) <= 1
     ]
 
+    spells = await _validate_spells(db, klass, build.cantrips, build.spells)
+
+    from app.services.starting_kit import compute_ac
+
+    ac = compute_ac(klass.slug, dex_mod)
+
     character = Character(
         campaign_id=campaign_id,
         user_id=user_id,
@@ -132,7 +188,7 @@ async def build_character(
         xp=0,
         hp_current=hp_max,
         hp_max=hp_max,
-        ac=10 + dex_mod,  # unarmored default; equipment can override on the sheet
+        ac=ac,  # from the class's starting armor (+shield), else unarmored 10+DEX
         ability_scores_json=scores,
         proficiencies_json={
             "skills": skills,
@@ -154,6 +210,7 @@ async def build_character(
             "features": features,
             "languages": race.data_json.get("languages", []),
             "spellcasting_ability": klass.data_json.get("spellcasting_ability"),
+            "spells": spells,  # {"cantrips": [...], "known": [...]}
             "hit_die": hit_die,
             "ability_method": build.method,
             "base_scores": base_scores,

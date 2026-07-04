@@ -93,8 +93,37 @@ async def create_character(
         raise bad_request(str(e)) from e
     db.add(character)
     await db.commit()
+
+    # Give the character its class starting kit as real inventory.
+    from app.services.starting_kit import grant_starting_kit
+
+    await grant_starting_kit(db, campaign_id, character)
+    await db.commit()
+
     broadcast_character(character)
     return character_out(character)
+
+
+@router.get("/campaigns/{campaign_id}/class-spells/{klass}")
+async def class_spells(
+    campaign_id: str, klass: str, db: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    """Spell options + level-1 known counts for a class, to drive the wizard's
+    spell-selection step."""
+    await require_campaign_member(campaign_id, db, user)
+    from app.services.character_builder import class_spell_options
+    from app.services.starting_kit import CASTER_SLOTS_L1
+
+    slug = klass.lower().replace(" ", "-")
+    counts = CASTER_SLOTS_L1.get(slug)
+    options = await class_spell_options(db, klass) if counts else {"cantrips": [], "level1": []}
+    return {
+        "is_caster": counts is not None,
+        "cantrips_known": counts[0] if counts else 0,
+        "spells_known": counts[1] if counts else 0,
+        "cantrips": options["cantrips"],
+        "level1": options["level1"],
+    }
 
 
 @router.get("/characters/{character_id}")
