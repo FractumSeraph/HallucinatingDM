@@ -53,8 +53,9 @@ async def put_setting(key: str, value: dict[str, Any]) -> None:
         await db.commit()
 
 
-async def load_llm_config() -> LLMConfig:
-    """Env defaults, overridden by any admin-saved values."""
+async def load_llm_config(campaign: Any = None) -> LLMConfig:
+    """Env defaults, overridden by admin-saved values, then (if given) by a
+    campaign's own LLM overrides — so a group can bring its own model/key."""
     env = get_settings()
     config = LLMConfig(
         provider=env.llm_provider,
@@ -84,6 +85,17 @@ async def load_llm_config() -> LLMConfig:
             decrypted = decrypt_secret(stored[secret])
             if decrypted:
                 setattr(config, secret, decrypted)
+
+    # Per-campaign overrides (chat side only — embeddings/RAG stay on the shared
+    # index). api_key is Fernet-encrypted in the campaign's settings_json.
+    overrides = ((getattr(campaign, "settings_json", None) or {}).get("llm")) or {}
+    for field_name in ("base_url", "model", "toolcall_mode"):
+        if overrides.get(field_name):
+            setattr(config, field_name, overrides[field_name])
+    if overrides.get("api_key"):
+        decrypted = decrypt_secret(overrides["api_key"])
+        if decrypted:
+            config.api_key = decrypted
     return config
 
 

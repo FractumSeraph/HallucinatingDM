@@ -93,8 +93,10 @@ async def suggest_actions(db: AsyncSession, scene: Scene, user_id: str) -> list[
 
     try:
         from app.ai.memory import _complete
+        from app.models import Campaign
 
-        raw = await _complete(prompt)
+        campaign = await db.get(Campaign, scene.campaign_id)
+        raw = await _complete(prompt, campaign=campaign)
     except Exception as exc:
         log.warning("action suggestions failed: %s", exc)
         return list(FALLBACK_SUGGESTIONS)

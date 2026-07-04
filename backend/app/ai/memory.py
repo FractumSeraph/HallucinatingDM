@@ -42,8 +42,8 @@ NEW SCENE RECAPS (oldest first):
 UPDATED CAMPAIGN SUMMARY:"""
 
 
-async def _complete(prompt: str) -> str:
-    provider = await get_provider()
+async def _complete(prompt: str, campaign: Campaign | None = None) -> str:
+    provider = await get_provider(campaign)
     out = ""
     async for event in provider.chat(
         [{"role": "user", "content": prompt}], temperature=0.3, max_tokens=400
@@ -83,7 +83,8 @@ async def summarize_scene(
             SUMMARY_PROMPT.format(
                 transcript=prefix + transcript,
                 hint=f"Also make sure to mention: {hint}" if hint else "",
-            )
+            ),
+            campaign=campaign,
         )
     except Exception as exc:
         log.warning("scene summarization failed: %s", exc)
@@ -154,7 +155,8 @@ async def maybe_rollup_campaign(db: AsyncSession, campaign: Campaign) -> str | N
             CAMPAIGN_SUMMARY_PROMPT.format(
                 previous=campaign.summary or "(none yet — the campaign just began)",
                 recaps="\n---\n".join(r.content for r in recaps),
-            )
+            ),
+            campaign=campaign,
         )
     except Exception as exc:
         log.warning("campaign rollup failed: %s", exc)

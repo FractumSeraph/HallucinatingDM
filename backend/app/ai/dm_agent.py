@@ -75,16 +75,34 @@ def _status(campaign_id: str, scene_id: str, status: str) -> None:
 
 
 async def run_turn(scene_id: str) -> None:
-    provider = await get_provider()
-    use_native = provider.config.toolcall_mode in ("native", "auto")
-    prompted = provider.config.toolcall_mode == "prompted"
-
     async with get_sessionmaker()() as db:
         scene = await db.get(Scene, scene_id)
         if not scene or scene.status == "archived":
             return
         campaign = await db.get(Campaign, scene.campaign_id)
         assert campaign
+
+        # Per-campaign token cap: a group can't overrun the host's budget.
+        from app.services.usage import campaign_token_cap, campaign_usage
+
+        cap = campaign_token_cap(campaign)
+        if cap is not None:
+            spent = (await campaign_usage(db, campaign.id))["total_tokens"]
+            if spent >= cap:
+                await create_message(
+                    db, scene, author_type="system", kind="system",
+                    content=(
+                        f"⛔ AI DM paused: this campaign has reached its token cap "
+                        f"({spent:,}/{cap:,}). Raise or clear the cap on the DM screen to continue."
+                    ),
+                    visibility="dm",
+                )
+                return
+
+        # Resolve the provider with this campaign's model/key override applied.
+        provider = await get_provider(campaign)
+        use_native = provider.config.toolcall_mode in ("native", "auto")
+        prompted = provider.config.toolcall_mode == "prompted"
 
         turn = AiTurn(scene_id=scene_id, status="running", model=provider.config.model)
         db.add(turn)

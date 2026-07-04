@@ -5,9 +5,16 @@ from pydantic import BaseModel
 
 from app.api.deps import CurrentUser, DbSession
 from app.api.errors import forbidden
-from app.services.settings_service import get_setting, load_llm_config, save_llm_config
+from app.services.settings_service import (
+    get_setting,
+    load_llm_config,
+    put_setting,
+    save_llm_config,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+INSTANCE_SETTINGS_KEY = "instance"
 
 
 class LlmSettingsPatch(BaseModel):
@@ -62,6 +69,37 @@ async def put_llm_settings(
     stored_values = {renames.get(k, k): v for k, v in values.items()}
     await save_llm_config(stored_values)
     return await get_llm_settings(user, _db)
+
+
+class InstancePatch(BaseModel):
+    signup_mode: str | None = None  # open | invite | closed
+    signup_code: str | None = None
+
+
+@router.get("/instance")
+async def get_instance_settings(user: CurrentUser, _db: DbSession) -> dict[str, Any]:
+    _require_admin(user)
+    instance = await get_setting(INSTANCE_SETTINGS_KEY)
+    return {
+        "signup_mode": instance.get("signup_mode", "open"),
+        "signup_code": instance.get("signup_code", ""),
+    }
+
+
+@router.put("/instance")
+async def put_instance_settings(
+    body: InstancePatch, user: CurrentUser, _db: DbSession
+) -> dict[str, Any]:
+    _require_admin(user)
+    instance = await get_setting(INSTANCE_SETTINGS_KEY)
+    if body.signup_mode is not None:
+        if body.signup_mode not in ("open", "invite", "closed"):
+            raise forbidden("Invalid signup mode")
+        instance["signup_mode"] = body.signup_mode
+    if body.signup_code is not None:
+        instance["signup_code"] = body.signup_code.strip()
+    await put_setting(INSTANCE_SETTINGS_KEY, instance)
+    return await get_instance_settings(user, _db)
 
 
 @router.post("/reindex")
