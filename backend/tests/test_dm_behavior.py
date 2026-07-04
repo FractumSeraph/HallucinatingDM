@@ -41,4 +41,7 @@ async def test_prompt_carries_behavioral_guidance(app_client):
     # Anti-repetition / verbal tics.
     assert "Vary your prose" in system
     assert "verbal tic" in system
+    # Narration must honor the die — no success on a failed roll.
+    assert "Honor the die" in system
+    assert "NEVER narrate a success on a failed check" in system
     set_provider(None)
