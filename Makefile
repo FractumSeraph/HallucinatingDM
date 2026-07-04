@@ -39,6 +39,9 @@ up:
 up-ollama:
 	docker compose --profile ollama up
 
+up-ollama-gpu:
+	docker compose --profile ollama -f docker-compose.yml -f docker-compose.gpu.yml up
+
 # Smoke test against a real local Ollama (pulls a small model).
 smoke-ollama:
 	cd backend && LLM_SMOKE=1 uv run pytest -q tests/test_smoke_ollama.py

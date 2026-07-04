@@ -58,17 +58,28 @@ python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # paste into .en
 
 **2. Pick your LLM and start the app**
 
-*Option A — bundled local LLM (no GPU config, no accounts).* The `.env` defaults
-already point at the bundled Ollama; first start pulls `llama3.1` and
-`nomic-embed-text` (several GB, one time):
+*Option A — bundled local LLM (no accounts, fully self-hosted).* The `.env`
+defaults already point at the bundled Ollama; first start pulls
+`qwen3.6:35b-a3b` and `nomic-embed-text` (~24 GB download, one time):
 
 ```bash
+# CPU only:
 docker compose --profile ollama up -d
+# with an NVIDIA GPU (needs the NVIDIA Container Toolkit):
+docker compose --profile ollama -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
-*Option B — an endpoint you already have* (LM Studio, vLLM, OpenRouter, OpenAI, a
-remote Ollama…). Edit `LLM_BASE_URL`, `LLM_MODEL`, and `LLM_API_KEY` in `.env`
-(see the [provider table](#llm-providers) below), then:
+The default model is picked for a **12 GB GPU (e.g. RTX 3060) + 32–64 GB system
+RAM**: it's a mixture-of-experts model with only ~3B active parameters, so the
+layers that don't fit in VRAM spill to system RAM without killing speed, while
+tool-calling quality (the thing this app leans on hardest) stays flagship-class.
+The bundled Ollama is preconfigured for a 32k context window so long sessions
+don't get silently truncated. Tighter on RAM? Set `LLM_MODEL=qwen3:14b` in
+`.env` — it fits entirely in 12 GB VRAM.
+
+*Option B — an endpoint you already have* (OpenCode Go, LM Studio, vLLM,
+OpenRouter, OpenAI, a remote Ollama…). Edit `LLM_BASE_URL`, `LLM_MODEL`, and
+`LLM_API_KEY` in `.env` (see the [provider table](#llm-providers) below), then:
 
 ```bash
 docker compose up -d
@@ -163,11 +174,28 @@ page (which also has a connection test):
 
 | Provider | LLM_BASE_URL | Notes |
 |---|---|---|
-| Ollama | `http://ollama:11434/v1` (in compose) | default; `llama3.1` + `nomic-embed-text` |
+| Ollama | `http://ollama:11434/v1` (in compose) | default; `qwen3.6:35b-a3b` + `nomic-embed-text` |
+| OpenCode Go | `https://opencode.ai/zen/go/v1` | hosted open models, $10/mo — see below |
 | LM Studio | `http://host.docker.internal:1234/v1` | enable the local server |
 | vLLM | `http://your-host:8000/v1` | |
 | OpenRouter | `https://openrouter.ai/api/v1` | set `LLM_API_KEY` |
 | OpenAI | `https://api.openai.com/v1` | set `LLM_API_KEY` |
+
+**OpenCode Go** is a low-cost subscription (currently $5 first month, then $10/mo)
+from the OpenCode team giving flat-rate access to strong open models (Qwen 3.6/3.7,
+GLM, Kimi, DeepSeek, MiniMax) through one OpenAI-compatible endpoint — a good
+option when local hardware is the bottleneck:
+
+1. Subscribe at [opencode.ai/go](https://opencode.ai/go) and copy your API key
+   from OpenCode Zen.
+2. In `.env` (or live on the Admin page):
+   `LLM_BASE_URL=https://opencode.ai/zen/go/v1`, `LLM_API_KEY=<your key>`,
+   `LLM_MODEL=qwen3.6-plus`.
+3. Run **Admin → Test connection**. OpenCode Go is chat-only (no embeddings
+   endpoint) — the connection test will say so. Either keep the compose ollama
+   profile running just for `nomic-embed-text` (leave `EMBEDDING_BASE_URL`
+   as-is), or ignore it: rules/lore search automatically falls back to
+   keyword-only mode without embeddings.
 
 **Tool-calling mode** (`auto` by default): capable models use native function calling;
 small local models can use `prompted` mode, where tools are called via fenced JSON blocks

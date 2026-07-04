@@ -17,9 +17,18 @@ provider-specific API.
 
 ## Provider notes
 
-- **Ollama** (≥0.3): first-class. `llama3.1` and up handle native tool calls; smaller
-  models (3B class) are better in `prompted` mode. `nomic-embed-text` gets its
+- **Ollama** (≥0.3): first-class. The default `qwen3.6:35b-a3b` (MoE, ~3B active
+  params) has strong native tool calling and runs well on a 12GB GPU with the
+  overflow in system RAM; dense 8B+ models also handle native tools, while small
+  models (3B class) are better in `prompted` mode. The compose ollama service is
+  preconfigured with a 32k context window (`OLLAMA_CONTEXT_LENGTH`) — Ollama's
+  4k default would silently truncate long games. `nomic-embed-text` gets its
   `search_document:`/`search_query:` prefixes automatically.
+- **OpenCode Go** (`https://opencode.ai/zen/go/v1`): flat-rate hosted open models
+  (Qwen 3.6/3.7, GLM, Kimi, DeepSeek, MiniMax) — subscribe at opencode.ai/go and
+  use your OpenCode Zen key. Native tools + streaming work out of the box. No
+  embeddings endpoint: point `EMBEDDING_BASE_URL` at a local Ollama, or skip it
+  and search runs keyword-only.
 - **LM Studio**: enable the local server; native tool support depends on the model —
   `auto` mode probes it. From Docker use `http://host.docker.internal:1234/v1`.
 - **vLLM**: use `--enable-auto-tool-choice` with a tool parser for native mode,
@@ -43,7 +52,7 @@ CI runs against the scripted mock provider only. To exercise a real local model:
 ```bash
 docker compose --profile ollama up -d
 # wait for ollama-init to pull models, then:
-LLM_BASE_URL=http://localhost:11434/v1 LLM_MODEL=llama3.1 \
+LLM_BASE_URL=http://localhost:11434/v1 LLM_MODEL=qwen3.6:35b-a3b \
   EMBEDDING_BASE_URL=http://localhost:11434/v1 \
   make backend   # then play a solo scene in the browser
 ```
