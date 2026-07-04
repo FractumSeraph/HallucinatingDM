@@ -2,6 +2,7 @@ import asyncio
 from typing import Any
 
 from fastapi import APIRouter
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -12,7 +13,7 @@ from app.api.deps import (
     require_campaign_member,
 )
 from app.api.errors import bad_request, forbidden, not_found
-from app.models import Character, Message, Scene
+from app.models import Campaign, Character, Message, Scene
 from app.realtime import events
 from app.realtime.hub import hub
 from app.services import dice as dice_service
@@ -157,20 +158,110 @@ async def list_messages(
     user: CurrentUser,
     after_seq: int = 0,
     limit: int = 200,
+    tail: bool = False,
 ) -> list[dict[str, Any]]:
+    """Messages for a scene, oldest→newest. `after_seq` fetches everything newer
+    than a seq (used for reconnect resync). `tail=true` returns the most recent
+    `limit` messages instead of the oldest — the right default for opening a
+    long scene, so the view isn't stuck at the beginning."""
     scene = await _get_scene_for_member(scene_id, db, user)
     member = await require_campaign_member(scene.campaign_id, db, user)
 
-    query = (
-        select(Message)
-        .where(Message.scene_id == scene_id, Message.seq > after_seq)
-        .order_by(Message.seq)
-        .limit(min(limit, 500))
-    )
+    capped = min(limit, 500)
+    base = select(Message).where(Message.scene_id == scene_id, Message.seq > after_seq)
     if member.role != "dm":
-        query = query.where(Message.visibility == "all")
-    result = await db.execute(query)
-    return [message_out(m) for m in result.scalars()]
+        base = base.where(Message.visibility == "all")
+
+    if tail:
+        # newest `capped` rows, then flip back to chronological order
+        rows = list(
+            (await db.execute(base.order_by(Message.seq.desc()).limit(capped))).scalars()
+        )[::-1]
+    else:
+        rows = list((await db.execute(base.order_by(Message.seq).limit(capped))).scalars())
+    return [message_out(m) for m in rows]
+
+
+def _transcript_line(msg: Message, char_names: dict[str, str]) -> str | None:
+    """One readable Markdown line per message for the exported log."""
+    ts = msg.created_at.strftime("%H:%M")
+    speaker = char_names.get(msg.character_id or "", None)
+
+    if msg.kind == "roll":
+        roll = (msg.payload_json or {}).get("roll", {})
+        who = roll.get("roller_name") or speaker or "?"
+        line = f"🎲 {who} rolled {roll.get('expression')} ({roll.get('purpose')}): {roll.get('total')}"
+        if roll.get("dc") is not None:
+            line += f" vs DC {roll['dc']} — {roll.get('outcome')}"
+        return f"`{ts}` {line}"
+
+    content = (msg.content or "").strip()
+    if not content:
+        return None
+
+    if msg.kind == "whisper":
+        who = "**DM → AI (whisper)**"
+    elif msg.author_type == "ai":
+        who = "**DM**"
+    elif msg.author_type == "system":
+        who = "_system_"
+    elif speaker:
+        # spoken in-character as a PC — show the character, whoever controls them
+        who = f"**{speaker}**"
+    elif msg.author_type == "dm":
+        who = "**DM**"
+    else:
+        who = "**Player**"
+
+    tag = ""
+    if msg.kind == "ooc":
+        tag = " (OOC)"
+    if msg.visibility != "all":
+        tag += " [DM-only]"
+    if msg.struck:
+        tag += " [retconned]"
+
+    return f"`{ts}` {who}{tag}: {content}"
+
+
+@router.get("/scenes/{scene_id}/transcript", response_class=PlainTextResponse)
+async def scene_transcript(
+    scene_id: str, db: DbSession, user: CurrentUser
+) -> PlainTextResponse:
+    """Download the full scene log as Markdown. DMs get everything (including
+    whispers and DM-only messages); players get only what they can see. Not
+    capped — the complete history, oldest to newest."""
+    scene = await _get_scene_for_member(scene_id, db, user)
+    member = await require_campaign_member(scene.campaign_id, db, user)
+    campaign = await db.get(Campaign, scene.campaign_id)
+
+    query = select(Message).where(Message.scene_id == scene_id).order_by(Message.seq)
+    if member.role != "dm":
+        query = query.where(Message.visibility == "all", Message.struck.is_(False))
+    messages = list((await db.execute(query)).scalars())
+
+    char_names = {
+        c.id: c.name
+        for c in (
+            await db.execute(
+                select(Character).where(Character.campaign_id == scene.campaign_id)
+            )
+        ).scalars()
+    }
+
+    header = [
+        f"# {campaign.name if campaign else 'Campaign'} — {scene.name}",
+        f"_Scene log · {len(messages)} messages_",
+        "",
+    ]
+    lines = [ln for m in messages if (ln := _transcript_line(m, char_names))]
+    body = "\n\n".join(lines) if lines else "_(no messages yet)_"
+    filename = "".join(c if c.isalnum() else "-" for c in scene.name).strip("-") or "scene"
+    return PlainTextResponse(
+        "\n".join(header) + body + "\n",
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}-log.md"'},
+    )
 
 
 @router.post("/scenes/{scene_id}/messages")
