@@ -126,8 +126,9 @@ async def test_inventory_flow(app_client):
     )
     assert resp.json() == {"deleted": True, "entry_id": entry["entry_id"]}
 
+    # the Torch is gone (the character still has its class starting kit)
     resp = await app_client.get(f"/api/v1/characters/{char_id}/inventory")
-    assert resp.json() == []
+    assert not any(i["name"].lower() == "torch" for i in resp.json())
 
 
 async def test_hp_patch_clamps(app_client):

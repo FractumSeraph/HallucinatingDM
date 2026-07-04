@@ -572,6 +572,7 @@ async def get_character_sheet(ctx: ToolContext, args: GetSheetArgs) -> ToolResul
             "skills": c.proficiencies_json.get("skills", []),
             "saves": c.proficiencies_json.get("saves", []),
             "spell_slots": c.spell_slots_json,
+            "spells": (c.sheet_json or {}).get("spells", {}),
             "conditions": c.conditions_json,
             "currency": c.currency_json,
             "inventory": [{"item": n, "qty": q} for n, q in inv.all()],

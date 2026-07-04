@@ -54,17 +54,29 @@ async def test_prompt_carries_player_authority_rules(app_client):
     set_provider(None)
 
 
-async def test_empty_pack_is_stated_not_omitted(app_client):
-    campaign, scene, character = await setup_game(app_client)
+async def _empty_the_pack(character_id):
+    """Chargen now grants a starting kit + gold; strip both so the pack is
+    genuinely empty for the tests that exercise the empty-pack rendering."""
+    from sqlalchemy import delete
 
-    # Chargen grants starting gold; strip it so the pack is truly empty.
     from app.db import get_sessionmaker
-    from app.models import Character
+    from app.models import Character, InventoryEntry
 
     async with get_sessionmaker()() as db:
-        c = await db.get(Character, character["id"])
+        await db.execute(
+            delete(InventoryEntry).where(
+                InventoryEntry.owner_type == "character",
+                InventoryEntry.owner_id == character_id,
+            )
+        )
+        c = await db.get(Character, character_id)
         c.currency_json = {}
         await db.commit()
+
+
+async def test_empty_pack_is_stated_not_omitted(app_client):
+    campaign, scene, character = await setup_game(app_client)
+    await _empty_the_pack(character["id"])
 
     mock = make_mock([[TextDelta("The road stretches on."), Done()]])
     from app.ai.dm_agent import run_turn
@@ -80,6 +92,7 @@ async def test_empty_pack_is_stated_not_omitted(app_client):
 
 async def test_carrying_line_replaces_fallback_once_items_exist(app_client):
     campaign, scene, character = await setup_game(app_client)
+    await _empty_the_pack(character["id"])  # clear the starting kit first
 
     from app.db import get_sessionmaker
     from app.models import InventoryEntry, Item

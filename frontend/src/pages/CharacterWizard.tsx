@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../api/client'
@@ -48,6 +48,8 @@ export function CharacterWizard() {
     str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8,
   })
   const [skills, setSkills] = useState<string[]>([])
+  const [cantrips, setCantrips] = useState<string[]>([])
+  const [spellsKnown, setSpellsKnown] = useState<string[]>([])
   const [background, setBackground] = useState('acolyte')
   const [alignment, setAlignment] = useState('')
   const [personality, setPersonality] = useState('')
@@ -80,6 +82,29 @@ export function CharacterWizard() {
   const race = races?.find((r) => r.slug === raceSlug)
   const klass = classes?.find((c) => c.slug === classSlug)
   const skillRule = klass?.data.proficiencies?.skills
+
+  const { data: spellOpts } = useQuery<{
+    is_caster: boolean
+    cantrips_known: number
+    spells_known: number
+    cantrips: string[]
+    level1: string[]
+  }>({
+    queryKey: ['campaigns', cid, 'class-spells', classSlug],
+    queryFn: () => api.get(`/campaigns/${cid}/class-spells/${classSlug}`),
+    enabled: Boolean(classSlug),
+  })
+
+  // Switching class invalidates prior spell picks.
+  useEffect(() => {
+    setCantrips([])
+    setSpellsKnown([])
+  }, [classSlug])
+
+  function toggleFrom(list: string[], set: (v: string[]) => void, value: string, max: number) {
+    if (list.includes(value)) set(list.filter((v) => v !== value))
+    else if (list.length < max) set([...list, value])
+  }
 
   const pointsUsed = useMemo(
     () => ABILITIES.reduce((sum, a) => sum + (POINT_COST[scores[a]] ?? 99), 0),
@@ -125,6 +150,8 @@ export function CharacterWizard() {
         method,
         base_scores: method === 'roll' ? {} : scores,
         skill_choices: skills,
+        cantrips: spellOpts?.is_caster ? cantrips : [],
+        spells: spellOpts?.is_caster ? spellsKnown : [],
         personality,
         backstory,
       })
@@ -425,6 +452,43 @@ export function CharacterWizard() {
           )}
           {method === 'roll' && <p className="muted">Abilities: server-rolled 4d6kh3</p>}
           <p className="muted">Skills: {skills.join(', ')}</p>
+
+          {spellOpts?.is_caster && (
+            <div style={{ marginTop: '0.75rem' }}>
+              <h4 style={{ margin: '0 0 0.25rem' }}>
+                Cantrips ({cantrips.length}/{spellOpts.cantrips_known})
+              </h4>
+              <div className="pick-grid">
+                {spellOpts.cantrips.map((s) => (
+                  <button
+                    key={s}
+                    className={`pick ${cantrips.includes(s) ? 'picked' : ''}`}
+                    onClick={() =>
+                      toggleFrom(cantrips, setCantrips, s, spellOpts.cantrips_known)
+                    }
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <h4 style={{ margin: '0.75rem 0 0.25rem' }}>
+                Level-1 spells ({spellsKnown.length}/{spellOpts.spells_known})
+              </h4>
+              <div className="pick-grid">
+                {spellOpts.level1.map((s) => (
+                  <button
+                    key={s}
+                    className={`pick ${spellsKnown.includes(s) ? 'picked' : ''}`}
+                    onClick={() =>
+                      toggleFrom(spellsKnown, setSpellsKnown, s, spellOpts.spells_known)
+                    }
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {error && <p className="error-text">{error}</p>}
         </section>
       )}
