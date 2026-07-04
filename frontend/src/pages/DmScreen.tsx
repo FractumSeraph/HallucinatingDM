@@ -45,6 +45,10 @@ export function DmScreen() {
           <PinnedFactsPanel campaignId={cid} />
         </section>
         <section className="card">
+          <h3>Model &amp; usage</h3>
+          <CampaignLlmPanel campaignId={cid} />
+        </section>
+        <section className="card">
           <h3>World event log</h3>
           <WorldEventFeed campaignId={cid} />
         </section>
@@ -257,6 +261,104 @@ function ScenePrepEditor({
         <button className="btn-primary" onClick={save}>
           Save prep
         </button>
+      </div>
+    </div>
+  )
+}
+
+interface CampaignLlm {
+  base_url: string
+  model: string
+  toolcall_mode: string
+  api_key_set: boolean
+  token_cap: number
+  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; turns: number }
+}
+
+function CampaignLlmPanel({ campaignId }: { campaignId: string }) {
+  const qc = useQueryClient()
+  const { data } = useQuery<CampaignLlm>({
+    queryKey: ['campaigns', campaignId, 'llm'],
+    queryFn: () => api.get(`/campaigns/${campaignId}/llm`),
+  })
+  const [model, setModel] = useState<string | null>(null)
+  const [baseUrl, setBaseUrl] = useState<string | null>(null)
+  const [apiKey, setApiKey] = useState('')
+  const [cap, setCap] = useState<string | null>(null)
+  const [status, setStatus] = useState('')
+
+  if (!data) return <p className="muted">Loading…</p>
+
+  const modelVal = model ?? data.model
+  const baseVal = baseUrl ?? data.base_url
+  const capVal = cap ?? (data.token_cap ? String(data.token_cap) : '')
+  const used = data.usage.total_tokens
+  const pct = data.token_cap ? Math.min(100, Math.round((used / data.token_cap) * 100)) : 0
+
+  async function save() {
+    setStatus('Saving…')
+    const body: Record<string, unknown> = {
+      model: modelVal,
+      base_url: baseVal,
+      token_cap: capVal ? Number(capVal) : 0,
+    }
+    if (apiKey) body.api_key = apiKey
+    try {
+      await api.put(`/campaigns/${campaignId}/llm`, body)
+      setApiKey('')
+      await qc.invalidateQueries({ queryKey: ['campaigns', campaignId, 'llm'] })
+      setStatus('Saved.')
+    } catch {
+      setStatus('Save failed')
+    }
+  }
+
+  return (
+    <div className="col">
+      <p className="muted" style={{ marginTop: 0, fontSize: '0.85rem' }}>
+        Used <strong>{used.toLocaleString()}</strong> tokens over {data.usage.turns} AI turns
+        {data.token_cap ? ` · cap ${data.token_cap.toLocaleString()}` : ' · no cap'}.
+      </p>
+      {data.token_cap > 0 && (
+        <div className="usage-bar">
+          <div className="usage-bar-fill" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      <label className="muted" style={{ fontSize: '0.82rem' }}>
+        Model override (blank = use the instance default)
+        <input value={modelVal} placeholder="qwen3.6-plus" onChange={(e) => setModel(e.target.value)} />
+      </label>
+      <label className="muted" style={{ fontSize: '0.82rem' }}>
+        Endpoint base URL (optional)
+        <input
+          value={baseVal}
+          placeholder="https://opencode.ai/zen/go/v1"
+          onChange={(e) => setBaseUrl(e.target.value)}
+        />
+      </label>
+      <label className="muted" style={{ fontSize: '0.82rem' }}>
+        API key {data.api_key_set ? '(saved — blank keeps it)' : '(uses shared key if blank)'}
+        <input
+          type="password"
+          value={apiKey}
+          placeholder="sk-…"
+          onChange={(e) => setApiKey(e.target.value)}
+        />
+      </label>
+      <label className="muted" style={{ fontSize: '0.82rem' }}>
+        Token cap (0 = unlimited) — the AI pauses when this campaign hits it
+        <input
+          type="number"
+          value={capVal}
+          placeholder="0"
+          onChange={(e) => setCap(e.target.value)}
+        />
+      </label>
+      <div className="row">
+        <button className="btn-primary" onClick={save}>
+          Save
+        </button>
+        {status && <span className="muted">{status}</span>}
       </div>
     </div>
   )

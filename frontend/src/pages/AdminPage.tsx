@@ -172,6 +172,77 @@ export function AdminPage() {
           </div>
         )}
       </form>
+
+      <RegistrationSettings />
     </div>
+  )
+}
+
+interface Instance {
+  signup_mode: string
+  signup_code: string
+}
+
+function RegistrationSettings() {
+  const [instance, setInstance] = useState<Instance | null>(null)
+  const [mode, setMode] = useState('open')
+  const [code, setCode] = useState('')
+  const [status, setStatus] = useState('')
+
+  useEffect(() => {
+    api
+      .get<Instance>('/admin/instance')
+      .then((i) => {
+        setInstance(i)
+        setMode(i.signup_mode)
+        setCode(i.signup_code)
+      })
+      .catch(() => {})
+  }, [])
+
+  async function save(e: FormEvent) {
+    e.preventDefault()
+    setStatus('Saving…')
+    try {
+      const updated = await api.put<Instance>('/admin/instance', {
+        signup_mode: mode,
+        signup_code: code,
+      })
+      setInstance(updated)
+      setStatus('Saved.')
+    } catch (err) {
+      setStatus(err instanceof ApiError ? err.message : 'Save failed')
+    }
+  }
+
+  if (!instance) return null
+  return (
+    <>
+      <h1 style={{ marginTop: '2rem' }}>Registration</h1>
+      <p className="muted">
+        Control who can create an account on this instance. Each group runs its own
+        campaign; this only gates <em>signup</em>.
+      </p>
+      <form onSubmit={save} className="col card">
+        <label className="muted">
+          Who can sign up
+          <select value={mode} onChange={(e) => setMode(e.target.value)}>
+            <option value="open">Open — anyone with the link</option>
+            <option value="invite">Invite code required</option>
+            <option value="closed">Closed — no new accounts</option>
+          </select>
+        </label>
+        {mode === 'invite' && (
+          <label className="muted">
+            Invite code (share with people you want to let in)
+            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. DRAGONS" />
+          </label>
+        )}
+        <div className="row">
+          <button className="btn-primary">Save</button>
+          {status && <span className="muted">{status}</span>}
+        </div>
+      </form>
+    </>
   )
 }

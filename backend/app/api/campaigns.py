@@ -181,6 +181,86 @@ async def get_recaps(campaign_id: str, db: DbSession, user: CurrentUser) -> Reca
     )
 
 
+class CampaignLlmPatch(BaseModel):
+    base_url: str | None = None
+    model: str | None = None
+    toolcall_mode: str | None = None
+    api_key: str | None = None  # "" clears back to the shared default
+    token_cap: int | None = None  # 0 or null removes the cap
+
+
+class CampaignLlmOut(BaseModel):
+    base_url: str
+    model: str
+    toolcall_mode: str
+    api_key_set: bool
+    token_cap: int
+    usage: dict[str, int]
+
+
+async def _campaign_llm_out(db, campaign: Campaign) -> CampaignLlmOut:
+    from app.services.usage import campaign_usage
+
+    stored = (campaign.settings_json or {}).get("llm") or {}
+    return CampaignLlmOut(
+        base_url=stored.get("base_url", ""),
+        model=stored.get("model", ""),
+        toolcall_mode=stored.get("toolcall_mode", ""),
+        api_key_set=bool(stored.get("api_key")),
+        token_cap=int(stored.get("token_cap") or 0),
+        usage=await campaign_usage(db, campaign.id),
+    )
+
+
+@router.get("/{campaign_id}/llm", response_model=CampaignLlmOut)
+async def get_campaign_llm(campaign_id: str, db: DbSession, user: CurrentUser) -> CampaignLlmOut:
+    """This campaign's model override (if any) + its token usage. DM-only —
+    lets a group bring its own model/key and watch its spend."""
+    await require_campaign_dm(campaign_id, db, user)
+    campaign = await db.get(Campaign, campaign_id)
+    assert campaign
+    return await _campaign_llm_out(db, campaign)
+
+
+@router.put("/{campaign_id}/llm", response_model=CampaignLlmOut)
+async def put_campaign_llm(
+    campaign_id: str, body: CampaignLlmPatch, db: DbSession, user: CurrentUser
+) -> CampaignLlmOut:
+    await require_campaign_dm(campaign_id, db, user)
+    campaign = await db.get(Campaign, campaign_id)
+    assert campaign
+
+    from app.services.settings_service import encrypt_secret
+
+    settings = dict(campaign.settings_json or {})
+    llm = dict(settings.get("llm") or {})
+    for field_name in ("base_url", "model", "toolcall_mode"):
+        value = getattr(body, field_name)
+        if value is not None:
+            if value == "":
+                llm.pop(field_name, None)
+            else:
+                llm[field_name] = value
+    if body.api_key is not None:
+        if body.api_key == "":
+            llm.pop("api_key", None)  # fall back to the shared key
+        else:
+            llm["api_key"] = encrypt_secret(body.api_key)
+    if body.token_cap is not None:
+        if body.token_cap > 0:
+            llm["token_cap"] = body.token_cap
+        else:
+            llm.pop("token_cap", None)
+    settings["llm"] = llm
+    campaign.settings_json = settings
+    await db.commit()
+
+    from app.ai.provider import set_provider
+
+    set_provider(None)  # drop cached providers so the new override takes effect
+    return await _campaign_llm_out(db, campaign)
+
+
 @router.get("/{campaign_id}/members", response_model=list[MemberOut])
 async def list_members(campaign_id: str, db: DbSession, user: CurrentUser) -> list[MemberOut]:
     await require_campaign_member(campaign_id, db, user)

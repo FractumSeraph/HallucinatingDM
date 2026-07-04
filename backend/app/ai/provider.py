@@ -148,25 +148,47 @@ class OpenAICompatProvider:
         return [item.embedding for item in resp.data]
 
 
-_provider: LLMProvider | None = None
+# An explicit override (tests/mock, or an admin "test connection") always wins.
+# Otherwise providers are built from config and cached by their config
+# signature, so per-campaign overrides each get their own reused client.
+_override: LLMProvider | None = None
+_cache: dict[str, LLMProvider] = {}
 
 
-async def get_provider() -> LLMProvider:
-    global _provider
-    if _provider is None:
-        from app.services.settings_service import load_llm_config
+def _build(config: LLMConfig) -> LLMProvider:
+    if config.provider == "mock":
+        from app.ai.mock_provider import MockProvider
 
-        config = await load_llm_config()
-        if config.provider == "mock":
-            from app.ai.mock_provider import MockProvider
+        return MockProvider(config)
+    return OpenAICompatProvider(config)
 
-            _provider = MockProvider(config)
-        else:
-            _provider = OpenAICompatProvider(config)
-    return _provider
+
+async def get_provider(campaign: Any = None) -> LLMProvider:
+    """Resolve the LLM provider. Pass a campaign to apply its per-campaign
+    model/key overrides (falling back to the global/admin config)."""
+    if _override is not None:
+        return _override
+    from app.services.settings_service import load_llm_config
+
+    config = await load_llm_config(campaign)
+    key = "|".join(
+        str(x)
+        for x in (
+            config.provider, config.base_url, config.model, config.api_key,
+            config.toolcall_mode, config.embedding_base_url,
+            config.embedding_model, config.embedding_api_key,
+        )
+    )
+    provider = _cache.get(key)
+    if provider is None:
+        provider = _build(config)
+        _cache[key] = provider
+    return provider
 
 
 def set_provider(provider: LLMProvider | None) -> None:
-    """Swap the provider (admin settings change, tests)."""
-    global _provider
-    _provider = provider
+    """Swap the provider (admin settings change, tests). Clearing it (None)
+    also drops the per-config cache so the next call rebuilds from settings."""
+    global _override
+    _override = provider
+    _cache.clear()
