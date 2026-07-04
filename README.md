@@ -1,7 +1,6 @@
 # 🦙 Labyrinths and Llamas
 
-A **self-hosted, LLM-powered multiplayer D&D 5E platform** — think Friends & Fables, but
-running on your own hardware with **Ollama** or any OpenAI-compatible API.
+A **self-hosted, LLM-powered multiplayer D&D 5E platform** — running on your own hardware with **Ollama** or any OpenAI-compatible API.
 
 One human is the designated DM; unlimited players join from any device with a browser.
 The AI can fully run the game, co-pilot alongside the human DM, or just draft suggestions.
