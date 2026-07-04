@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '../api/client'
+import type { Quest } from '../api/types'
 import { useCharacters } from './CharacterList'
 import { HpBar } from './HpBar'
 import { CombatPanel } from './CombatPanel'
 
-/** Right rail of the game view: party HP, combat tracker. */
+/** Right rail of the game view: party HP, combat tracker, quest log. */
 export function GameRail({
   campaignId,
   sceneId,
@@ -49,9 +52,43 @@ export function GameRail({
                 <HpBar current={c.hp_current} max={c.hp_max} temp={c.hp_temp} compact />
               </Link>
             ))}
+            <QuestLog campaignId={campaignId} />
           </div>
         )}
       </aside>
+    </>
+  )
+}
+
+/** Open quests with objective ticks — updated live via QUEST_UPDATED events. */
+function QuestLog({ campaignId }: { campaignId: string }) {
+  const { data: quests } = useQuery<Quest[]>({
+    queryKey: ['campaigns', campaignId, 'quests'],
+    queryFn: () => api.get(`/campaigns/${campaignId}/quests`),
+  })
+  const open = quests?.filter((q) => q.status === 'active' || q.status === 'rumored')
+  if (!open?.length) return null
+  return (
+    <>
+      <h4 style={{ margin: '0.5rem 0 0' }}>Quests</h4>
+      {open.map((q) => (
+        <div key={q.id} className="quest-row">
+          <div className="row" style={{ gap: '0.4rem' }}>
+            <strong className="grow">{q.title}</strong>
+            {q.status === 'rumored' && <span className="badge">rumored</span>}
+          </div>
+          {q.summary && <div className="muted quest-summary">{q.summary}</div>}
+          {q.objectives_json.length > 0 && (
+            <ul className="plain-list quest-objectives">
+              {q.objectives_json.map((o, i) => (
+                <li key={i} className={o.done ? 'objective-done' : ''}>
+                  {o.done ? '✓' : '○'} {o.text}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ))}
     </>
   )
 }

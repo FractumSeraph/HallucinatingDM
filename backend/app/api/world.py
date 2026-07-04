@@ -132,6 +132,25 @@ async def get_world(campaign_id: str, db: DbSession, user: CurrentUser) -> dict[
     }
 
 
+@router.get("/campaigns/{campaign_id}/quests")
+async def list_quests(campaign_id: str, db: DbSession, user: CurrentUser) -> list[dict[str, Any]]:
+    """Quest log (members). Kept separate from /world so the game rail can
+    poll it cheaply and QUEST_UPDATED events can invalidate just this."""
+    member = await require_campaign_member(campaign_id, db, user)
+    quests = (
+        (
+            await db.execute(
+                select(Quest)
+                .where(Quest.campaign_id == campaign_id)
+                .order_by(Quest.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [quest_out(q, member.role == "dm") for q in quests]
+
+
 @router.get("/campaigns/{campaign_id}/world-events")
 async def list_world_events(
     campaign_id: str, db: DbSession, user: CurrentUser, limit: int = 50

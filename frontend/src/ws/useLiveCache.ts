@@ -42,6 +42,8 @@ export function useLiveCache(campaignId: string | undefined) {
           next[idx] = scene
           return next
         })
+        // Scene updates also fire when recaps are (re)written — keep "Previously on…" live.
+        qc.invalidateQueries({ queryKey: ['campaigns', campaignId, 'recaps'] })
         break
       }
       case EVT.COMBAT_UPDATED: {
