@@ -40,9 +40,12 @@ async def test_prompt_carries_player_authority_rules(app_client):
     # Rule 7: attempts, never outcomes.
     assert "declare ATTEMPTS, never outcomes" in system
     assert "dice results and tool calls" in system
-    # Rule 8: the Carrying line is the complete inventory; impossible gear never appears.
-    assert "authoritative inventory" in system
+    # Rule 8: significant gear comes from the sheet; impossible gear never appears…
+    assert "mechanical weight" in system
     assert "rocket launcher" in system  # named explicitly as the canonical example
+    # …but improvising with mundane implied possessions stays allowed.
+    assert "improvisation" in system
+    assert "torn from a shirt" in system
     # And the declaration itself reached the model alongside those rules.
     transcript = "\n".join(
         m["content"] for m in mock.calls[0].messages if isinstance(m.get("content"), str)
