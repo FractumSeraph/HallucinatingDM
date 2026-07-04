@@ -15,7 +15,9 @@ the main table is idle — all in one persistent, shared world.
   Streams token-by-token to every connected player.
 - **Server-authoritative mechanics** — the LLM can never fabricate a roll. Dice use a
   CSPRNG, every die face is shown to players, modifiers come from the actual character
-  sheet, HP/death saves/spell slots/rests are enforced by code.
+  sheet, HP/death saves/spell slots/rests are enforced by code. Players declare
+  *attempts*, not outcomes: "I kill the goblin" gets downgraded to a resolved attack,
+  and gear that isn't on the sheet ("my rocket launcher") simply doesn't exist.
 - **Four DM modes per scene** — `AI runs it` · `Copilot` (big calls need one-click DM
   approval) · `Assist` (every draft approved/edited before players see it) · `Human`
   (AI on demand). Plus private `/whisper` instructions to the AI and a one-click

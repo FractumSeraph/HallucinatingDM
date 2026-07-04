@@ -17,6 +17,11 @@ export function HowToPlay({ onClose }: { onClose: () => void }) {
             tap it, and the server rolls with your character's real bonuses.
           </p>
           <p style={{ margin: 0 }}>
+            <strong>Say what you try, not what happens.</strong> "I swing at the goblin"
+            works; "I kill the goblin" doesn't — the dice decide outcomes, and the DM only
+            counts gear that's actually on your sheet. Attempts, not results.
+          </p>
+          <p style={{ margin: 0 }}>
             <strong>Stuck?</strong> Tap <strong>💡</strong> next to the message box for
             three ideas that fit the current moment, or just ask the DM in-game — "what
             are my options?"
