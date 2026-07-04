@@ -151,6 +151,10 @@ for a boss negotiation, back to `AI runs it` for travel.
 - **✨ Continue** — nudge the AI to keep going without player input.
 - **⎌ Retcon** — strike the last AI turn *and* reverse its state changes (HP, items,
   new NPCs…). Follow with a whisper about what should have happened.
+- **⬇ Log** — download the full scene as a readable Markdown transcript (every message
+  in order, attributed, with dice results). The DM's export includes whispers and
+  DM-only lines; a player's export includes only what they could see. Nothing is ever
+  discarded — the complete history always lives in `./data/app.db` too.
 - **OOC** checkbox — table talk the AI ignores.
 
 **DM screen** (`lobby → DM screen`) is your control panel:

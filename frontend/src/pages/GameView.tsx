@@ -38,7 +38,9 @@ export function GameView() {
 
   const { data: messages } = useQuery<Message[]>({
     queryKey: ['scenes', sid, 'messages'],
-    queryFn: () => api.get(`/scenes/${sid}/messages`),
+    // tail=true loads the most recent window, not the oldest — so opening a
+    // long-running scene lands you at the current moment.
+    queryFn: () => api.get(`/scenes/${sid}/messages?tail=true&limit=500`),
   })
 
   function appendMessage(msg: Message) {
@@ -166,6 +168,14 @@ export function GameView() {
             ⎌<span className="hide-sm"> Retcon</span>
           </button>
         )}
+        <a
+          className="btn"
+          href={`/api/v1/scenes/${sid}/transcript`}
+          title="Download the full scene log"
+          aria-label="Download scene log"
+        >
+          ⬇<span className="hide-sm"> Log</span>
+        </a>
         <button title="How to play" aria-label="How to play" onClick={() => setShowHelp(true)}>
           ?
         </button>
