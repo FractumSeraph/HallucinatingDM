@@ -258,9 +258,21 @@ input:focus, textarea:focus, select:focus {
 .dice-toggle-on { border-color: var(--accent); }
 .dice-bar { display: flex; flex-wrap: wrap; gap: 0.4rem; padding-bottom: 0.6rem; }
 .dice-bar button { padding: 0.35rem 0.75rem; font-size: 0.85rem; border-radius: 999px; }
+.idea-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; padding-bottom: 0.6rem; }
+.idea-chips button {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  border-radius: 999px;
+  border-color: var(--accent);
+  text-align: left;
+}
+.idea-chips .idea-dismiss { border-color: var(--border); color: var(--text-dim); }
+.starter-hint { max-width: 620px; font-size: 0.92rem; line-height: 1.6; }
 @media (max-width: 820px) {
   /* keep chips clear of the floating party (⚔️) button in the corner */
-  .dice-bar { padding-right: 3.4rem; }
+  .dice-bar, .idea-chips { padding-right: 3.4rem; }
+  /* icon-only header buttons on phones — the scene title needs the room */
+  .hide-sm { display: none; }
 }
 
 .game-rail {

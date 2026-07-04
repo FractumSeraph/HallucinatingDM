@@ -213,6 +213,19 @@ async def post_message(
     return message_out(msg)
 
 
+@router.post("/scenes/{scene_id}/suggest-actions")
+async def suggest_actions_endpoint(
+    scene_id: str, db: DbSession, user: CurrentUser
+) -> dict[str, list[str]]:
+    """'What can I do?' — three short in-character options for stuck players.
+    Always answers; falls back to generic suggestions if the model is down."""
+    scene = await _get_scene_for_member(scene_id, db, user)
+
+    from app.ai.suggestions import suggest_actions
+
+    return {"suggestions": await suggest_actions(db, scene, user.id)}
+
+
 class RollResponse(BaseModel):
     message_id: str  # the roll_request message being answered
 
