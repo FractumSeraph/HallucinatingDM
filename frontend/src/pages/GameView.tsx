@@ -2,12 +2,13 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../api/client'
-import { useCampaign } from '../api/hooks'
+import { useCampaign, useMe } from '../api/hooks'
 import type { Message, Scene } from '../api/types'
 import { EVT, WsEvent } from '../types/events'
 import { useCampaignSocket } from '../ws/useCampaignSocket'
 import { MessageRow } from '../components/MessageRow'
 import { GameRail } from '../components/GameRail'
+import { useCharacters } from '../components/CharacterList'
 import { useLiveCache } from '../ws/useLiveCache'
 
 interface StreamBuffer {
@@ -123,6 +124,13 @@ export function GameView() {
   }, [messages?.length, streamText, aiStatus])
 
   const isDm = campaign?.my_role === 'dm'
+  const { data: me } = useMe()
+  const { data: allCharacters } = useCharacters(cid)
+  // Speak and roll as your own active character so everyone (including the
+  // AI) sees "Mira", not an anonymous player.
+  const myCharacterId = allCharacters?.find(
+    (c) => c.user_id === me?.id && c.status === 'active',
+  )?.id
 
   return (
     <div className="game-view">
@@ -192,7 +200,7 @@ export function GameView() {
             ))}
             {aiStatus && <div className="ai-status muted">{aiStatus}</div>}
           </div>
-          <Composer sceneId={sid} isDm={isDm} />
+          <Composer sceneId={sid} isDm={isDm} characterId={myCharacterId} />
         </div>
         <GameRail campaignId={cid} sceneId={sid} isDm={isDm} />
       </div>
@@ -200,11 +208,44 @@ export function GameView() {
   )
 }
 
-function Composer({ sceneId, isDm }: { sceneId: string; isDm: boolean }) {
+const QUICK_ROLLS: [string, string][] = [
+  ['d20', '1d20'],
+  ['Advantage', '2d20kh1'],
+  ['Disadvantage', '2d20kl1'],
+  ['d4', '1d4'],
+  ['d6', '1d6'],
+  ['d8', '1d8'],
+  ['d10', '1d10'],
+  ['d12', '1d12'],
+  ['d100', '1d100'],
+]
+
+function Composer({
+  sceneId,
+  isDm,
+  characterId,
+}: {
+  sceneId: string
+  isDm: boolean
+  characterId?: string
+}) {
   const [text, setText] = useState('')
   const [ooc, setOoc] = useState(false)
+  const [showDice, setShowDice] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+
+  async function quickRoll(expression: string) {
+    setError('')
+    try {
+      await api.post(`/scenes/${sceneId}/roll`, {
+        expression,
+        character_id: characterId ?? null,
+      })
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Roll failed')
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -216,6 +257,7 @@ function Composer({ sceneId, isDm }: { sceneId: string; isDm: boolean }) {
       if (content.startsWith('/roll ')) {
         await api.post(`/scenes/${sceneId}/roll`, {
           expression: content.slice(6).trim(),
+          character_id: characterId ?? null,
         })
       } else if (content.startsWith('/whisper ') && isDm) {
         await api.post(`/scenes/${sceneId}/whisper`, { content: content.slice(9) })
@@ -223,6 +265,7 @@ function Composer({ sceneId, isDm }: { sceneId: string; isDm: boolean }) {
         await api.post(`/scenes/${sceneId}/messages`, {
           content,
           kind: ooc ? 'ooc' : 'chat',
+          character_id: ooc ? null : characterId ?? null,
         })
       }
       setText('')
@@ -236,6 +279,20 @@ function Composer({ sceneId, isDm }: { sceneId: string; isDm: boolean }) {
   return (
     <form className="composer" onSubmit={submit}>
       {error && <div className="error-text">{error}</div>}
+      {showDice && (
+        <div className="dice-bar">
+          {QUICK_ROLLS.map(([label, expression]) => (
+            <button
+              key={label}
+              type="button"
+              disabled={busy}
+              onClick={() => quickRoll(expression)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="row">
         <textarea
           value={text}
@@ -259,10 +316,21 @@ function Composer({ sceneId, isDm }: { sceneId: string; isDm: boolean }) {
           <button className="btn-primary" disabled={busy || !text.trim()}>
             Send
           </button>
-          <label className="muted ooc-toggle">
-            <input type="checkbox" checked={ooc} onChange={(e) => setOoc(e.target.checked)} />
-            OOC
-          </label>
+          <div className="row" style={{ gap: '0.4rem' }}>
+            <button
+              type="button"
+              className={showDice ? 'dice-toggle dice-toggle-on' : 'dice-toggle'}
+              title="Quick dice rolls"
+              aria-label="Quick dice rolls"
+              onClick={() => setShowDice(!showDice)}
+            >
+              🎲
+            </button>
+            <label className="muted ooc-toggle">
+              <input type="checkbox" checked={ooc} onChange={(e) => setOoc(e.target.checked)} />
+              OOC
+            </label>
+          </div>
         </div>
       </div>
     </form>

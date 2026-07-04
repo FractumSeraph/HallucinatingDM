@@ -47,11 +47,15 @@ provider-specific API.
 
 ## Real-model smoke test
 
-CI runs against the scripted mock provider only. To exercise a real local model:
+CI runs against the scripted mock provider only. `make smoke-ollama` runs an
+automated one-turn check against a live server (player message → real AI turn
+→ asserts narration landed) — a good preflight before a play session. To
+exercise a model interactively instead:
 
 ```bash
 docker compose --profile ollama up -d
 # wait for ollama-init to pull models, then:
+make smoke-ollama                 # automated single-turn check, or:
 LLM_BASE_URL=http://localhost:11434/v1 LLM_MODEL=qwen3.6:35b-a3b \
   EMBEDDING_BASE_URL=http://localhost:11434/v1 \
   make backend   # then play a solo scene in the browser
