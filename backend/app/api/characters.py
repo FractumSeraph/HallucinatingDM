@@ -112,7 +112,7 @@ async def class_spells(
     spell-selection step."""
     await require_campaign_member(campaign_id, db, user)
     from app.services.character_builder import class_spell_options
-    from app.services.starting_kit import CASTER_SLOTS_L1
+    from app.services.starting_kit import CASTER_SLOTS_L1, kit_for
 
     slug = klass.lower().replace(" ", "-")
     counts = CASTER_SLOTS_L1.get(slug)
@@ -123,7 +123,21 @@ async def class_spells(
         "spells_known": counts[1] if counts else 0,
         "cantrips": options["cantrips"],
         "level1": options["level1"],
+        # So the wizard can show the player the gear they'll start with.
+        "starting_kit": kit_for(klass),
     }
+
+
+@router.post("/campaigns/{campaign_id}/roll-abilities")
+async def roll_abilities(
+    campaign_id: str, db: DbSession, user: CurrentUser
+) -> dict[str, dict[str, int]]:
+    """Server-roll 4d6-drop-lowest for each ability, so the wizard can show the
+    result before the player commits to a class (and the roll is auditable)."""
+    await require_campaign_member(campaign_id, db, user)
+    from app.services.character_builder import _roll_scores
+
+    return {"scores": _roll_scores()}
 
 
 @router.get("/characters/{character_id}")

@@ -27,11 +27,21 @@ interface SrdClass {
   }
 }
 
+interface ClassInfo {
+  is_caster: boolean
+  cantrips_known: number
+  spells_known: number
+  cantrips: string[]
+  level1: string[]
+  starting_kit: { item: string; quantity: number }[]
+}
+
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8]
 const POINT_COST: Record<number, number> = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 }
 
-const STEPS = ['Race', 'Class', 'Abilities', 'Background', 'Review'] as const
+// Abilities come BEFORE class, so the player picks a class that fits their scores.
+const STEPS = ['Race', 'Abilities', 'Class', 'Details', 'Review'] as const
 
 export function CharacterWizard() {
   const { cid } = useParams() as { cid: string }
@@ -47,6 +57,8 @@ export function CharacterWizard() {
   const [scores, setScores] = useState<Record<string, number>>({
     str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8,
   })
+  const [rolled, setRolled] = useState(false) // a roll has been made this session
+  const [rolling, setRolling] = useState(false)
   const [skills, setSkills] = useState<string[]>([])
   const [cantrips, setCantrips] = useState<string[]>([])
   const [spellsKnown, setSpellsKnown] = useState<string[]>([])
@@ -83,13 +95,7 @@ export function CharacterWizard() {
   const klass = classes?.find((c) => c.slug === classSlug)
   const skillRule = klass?.data.proficiencies?.skills
 
-  const { data: spellOpts } = useQuery<{
-    is_caster: boolean
-    cantrips_known: number
-    spells_known: number
-    cantrips: string[]
-    level1: string[]
-  }>({
+  const { data: classInfo } = useQuery<ClassInfo>({
     queryKey: ['campaigns', cid, 'class-spells', classSlug],
     queryFn: () => api.get(`/campaigns/${cid}/class-spells/${classSlug}`),
     enabled: Boolean(classSlug),
@@ -104,6 +110,22 @@ export function CharacterWizard() {
   function toggleFrom(list: string[], set: (v: string[]) => void, value: string, max: number) {
     if (list.includes(value)) set(list.filter((v) => v !== value))
     else if (list.length < max) set([...list, value])
+  }
+
+  async function rollAbilities() {
+    setRolling(true)
+    setError('')
+    try {
+      const res = await api.post<{ scores: Record<string, number> }>(
+        `/campaigns/${cid}/roll-abilities`,
+      )
+      setScores(res.scores)
+      setRolled(true)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Roll failed')
+    } finally {
+      setRolling(false)
+    }
   }
 
   const pointsUsed = useMemo(
@@ -128,11 +150,18 @@ export function CharacterWizard() {
     )
   }
 
+  const abilitiesReady =
+    method === 'roll' ? rolled : method === 'standard' ? arrayValid : pointsUsed <= 27
+  const spellsReady =
+    !classInfo?.is_caster ||
+    (cantrips.length === classInfo.cantrips_known &&
+      spellsKnown.length === classInfo.spells_known)
+
   const canNext = [
     Boolean(raceSlug),
+    abilitiesReady,
     Boolean(classSlug),
-    method === 'roll' || (method === 'standard' ? arrayValid : pointsUsed <= 27),
-    skills.length === (skillRule?.choose ?? 0) && Boolean(name.trim()),
+    skills.length === (skillRule?.choose ?? 0) && Boolean(name.trim()) && spellsReady,
     true,
   ][step]
 
@@ -148,10 +177,11 @@ export function CharacterWizard() {
         background,
         alignment,
         method,
-        base_scores: method === 'roll' ? {} : scores,
+        // Rolled scores are made up front now, so send them either way.
+        base_scores: scores,
         skill_choices: skills,
-        cantrips: spellOpts?.is_caster ? cantrips : [],
-        spells: spellOpts?.is_caster ? spellsKnown : [],
+        cantrips: classInfo?.is_caster ? cantrips : [],
+        spells: classInfo?.is_caster ? spellsKnown : [],
         personality,
         backstory,
       })
@@ -192,10 +222,12 @@ export function CharacterWizard() {
       setAlignment(build.alignment)
       setMethod('standard')
       setScores(build.base_scores)
+      setRolled(true)
       setSkills(build.skill_choices)
       setPersonality(build.personality)
       setBackstory(build.backstory)
-      setStep(4) // jump to review with everything filled in
+      // Land on Details so casters can still pick spells before review.
+      setStep(3)
     } catch (err) {
       setAiError(err instanceof ApiError ? err.message : 'Suggestion failed')
     } finally {
@@ -286,31 +318,8 @@ export function CharacterWizard() {
 
       {step === 1 && (
         <section className="card">
-          <h3>Choose a class</h3>
-          <div className="pick-grid">
-            {classes?.map((c) => (
-              <button
-                key={c.slug}
-                className={`pick ${classSlug === c.slug ? 'picked' : ''}`}
-                onClick={() => {
-                  setClassSlug(c.slug)
-                  setSkills([])
-                }}
-              >
-                <strong>{c.name}</strong>
-                <span className="muted">
-                  d{c.data.hit_die} · saves {c.data.saving_throws.join('/')}
-                  {c.data.spellcasting_ability ? ` · casts with ${c.data.spellcasting_ability}` : ''}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {step === 2 && (
-        <section className="card">
           <h3>Ability scores</h3>
+          <p className="muted">Set these first — then pick a class that plays to your strengths.</p>
           <div className="row" style={{ marginBottom: '1rem' }}>
             {(['standard', 'pointbuy', 'roll'] as const).map((m) => (
               <button
@@ -318,6 +327,7 @@ export function CharacterWizard() {
                 className={method === m ? 'btn-primary' : ''}
                 onClick={() => {
                   setMethod(m)
+                  setRolled(false)
                   if (m === 'standard')
                     setScores({ str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 })
                   if (m === 'pointbuy')
@@ -329,10 +339,24 @@ export function CharacterWizard() {
             ))}
           </div>
           {method === 'roll' ? (
-            <p className="muted">
-              The server rolls 4d6-drop-lowest for each ability when you finish — no take-backs,
-              adventurer.
-            </p>
+            <>
+              <div className="row" style={{ marginBottom: '0.75rem' }}>
+                <button className="btn-primary" onClick={rollAbilities} disabled={rolling}>
+                  {rolling ? 'Rolling…' : rolled ? 'Reroll 4d6' : 'Roll 4d6 (drop lowest)'}
+                </button>
+                {!rolled && <span className="muted">The dice decide — roll to see your scores.</span>}
+              </div>
+              {rolled && (
+                <div className="ability-grid">
+                  {ABILITIES.map((a) => (
+                    <div key={a} className="ability-tile">
+                      <span className="ability-name">{a.toUpperCase()}</span>
+                      <span className="ability-score">{scores[a]}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           ) : (
             <>
               <div className="ability-grid">
@@ -371,6 +395,41 @@ export function CharacterWizard() {
                 <p className="error-text">Use each of 15, 14, 13, 12, 10, 8 exactly once.</p>
               )}
             </>
+          )}
+        </section>
+      )}
+
+      {step === 2 && (
+        <section className="card">
+          <h3>Choose a class</h3>
+          <div className="pick-grid">
+            {classes?.map((c) => (
+              <button
+                key={c.slug}
+                className={`pick ${classSlug === c.slug ? 'picked' : ''}`}
+                onClick={() => {
+                  setClassSlug(c.slug)
+                  setSkills([])
+                }}
+              >
+                <strong>{c.name}</strong>
+                <span className="muted">
+                  d{c.data.hit_die} · saves {c.data.saving_throws.join('/')}
+                  {c.data.spellcasting_ability ? ` · casts with ${c.data.spellcasting_ability}` : ''}
+                </span>
+              </button>
+            ))}
+          </div>
+          {classInfo && classInfo.starting_kit.length > 0 && (
+            <div style={{ marginTop: '0.75rem' }}>
+              <h4 style={{ margin: '0 0 0.25rem' }}>You'll start with</h4>
+              <p className="muted">
+                {classInfo.starting_kit
+                  .map((k) => (k.quantity > 1 ? `${k.item} ×${k.quantity}` : k.item))
+                  .join(', ')}
+                {classInfo.is_caster ? ' · plus the spells you choose next' : ''}
+              </p>
+            </div>
           )}
         </section>
       )}
@@ -423,6 +482,43 @@ export function CharacterWizard() {
               </div>
             </>
           )}
+
+          {classInfo?.is_caster && (
+            <div className="spell-picker">
+              <h4 style={{ margin: '0.5rem 0 0.25rem' }}>
+                Cantrips — pick {classInfo.cantrips_known} ({cantrips.length} chosen)
+              </h4>
+              <div className="pick-grid">
+                {classInfo.cantrips.map((s) => (
+                  <button
+                    key={s}
+                    className={`pick ${cantrips.includes(s) ? 'picked' : ''}`}
+                    onClick={() => toggleFrom(cantrips, setCantrips, s, classInfo.cantrips_known)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <h4 style={{ margin: '0.75rem 0 0.25rem' }}>
+                Level-1 spells — pick {classInfo.spells_known} ({spellsKnown.length} chosen)
+              </h4>
+              <div className="pick-grid">
+                {classInfo.level1.map((s) => (
+                  <button
+                    key={s}
+                    className={`pick ${spellsKnown.includes(s) ? 'picked' : ''}`}
+                    onClick={() => toggleFrom(spellsKnown, setSpellsKnown, s, classInfo.spells_known)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              {!spellsReady && (
+                <p className="muted">Choose all your cantrips and spells to continue.</p>
+              )}
+            </div>
+          )}
+
           <textarea
             placeholder="Personality, ideals, bonds, flaws… (the AI DM reads this)"
             value={personality}
@@ -445,49 +541,23 @@ export function CharacterWizard() {
             <strong>{name}</strong> — {subrace || race?.name} {klass?.name}, {background}
             {alignment ? `, ${alignment}` : ''}
           </p>
-          {method !== 'roll' && (
+          <p className="muted">
+            {ABILITIES.map((a) => `${a.toUpperCase()} ${scores[a]}`).join(' · ')}
+            {method === 'roll' ? ' · rolled 4d6kh3' : ''}
+          </p>
+          <p className="muted">Skills: {skills.join(', ') || '—'}</p>
+          {classInfo && classInfo.starting_kit.length > 0 && (
             <p className="muted">
-              {ABILITIES.map((a) => `${a.toUpperCase()} ${scores[a]}`).join(' · ')}
+              Starting gear:{' '}
+              {classInfo.starting_kit
+                .map((k) => (k.quantity > 1 ? `${k.item} ×${k.quantity}` : k.item))
+                .join(', ')}
             </p>
           )}
-          {method === 'roll' && <p className="muted">Abilities: server-rolled 4d6kh3</p>}
-          <p className="muted">Skills: {skills.join(', ')}</p>
-
-          {spellOpts?.is_caster && (
-            <div style={{ marginTop: '0.75rem' }}>
-              <h4 style={{ margin: '0 0 0.25rem' }}>
-                Cantrips ({cantrips.length}/{spellOpts.cantrips_known})
-              </h4>
-              <div className="pick-grid">
-                {spellOpts.cantrips.map((s) => (
-                  <button
-                    key={s}
-                    className={`pick ${cantrips.includes(s) ? 'picked' : ''}`}
-                    onClick={() =>
-                      toggleFrom(cantrips, setCantrips, s, spellOpts.cantrips_known)
-                    }
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-              <h4 style={{ margin: '0.75rem 0 0.25rem' }}>
-                Level-1 spells ({spellsKnown.length}/{spellOpts.spells_known})
-              </h4>
-              <div className="pick-grid">
-                {spellOpts.level1.map((s) => (
-                  <button
-                    key={s}
-                    className={`pick ${spellsKnown.includes(s) ? 'picked' : ''}`}
-                    onClick={() =>
-                      toggleFrom(spellsKnown, setSpellsKnown, s, spellOpts.spells_known)
-                    }
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
+          {classInfo?.is_caster && (
+            <p className="muted">
+              Cantrips: {cantrips.join(', ') || '—'} · Spells: {spellsKnown.join(', ') || '—'}
+            </p>
           )}
           {error && <p className="error-text">{error}</p>}
         </section>
