@@ -49,6 +49,13 @@ CASTER_SLOTS_L1: dict[str, tuple[int, int]] = {
 }
 
 
+def kit_for(class_name: str) -> list[dict[str, int | str]]:
+    """The starting kit for a class, as [{item, quantity}] for the wizard to
+    preview. Accepts either a slug ('fighter') or a display name ('Fighter')."""
+    slug = class_name.lower().replace(" ", "-")
+    return [{"item": item, "quantity": qty} for item, qty in STARTING_KITS.get(slug, [])]
+
+
 def compute_ac(class_slug: str, dex_mod: int) -> int:
     """AC from the kit's armor (+ shield), or unarmored 10+DEX."""
     kit = STARTING_KITS.get(class_slug, [])

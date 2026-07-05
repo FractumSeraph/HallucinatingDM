@@ -110,7 +110,16 @@ async def build_character(
 
     # --- Ability scores -------------------------------------------------------
     if build.method == "roll":
-        base_scores = _roll_scores()
+        # The wizard rolls up front (via /roll-abilities) so the player can pick
+        # a class that fits their scores; those rolled values arrive here. If
+        # none were supplied (older client / API caller), roll now.
+        if build.base_scores:
+            base_scores = {k: int(v) for k, v in build.base_scores.items()}
+            error = rules_5e.validate_rolled(base_scores)
+            if error:
+                raise BuildError(error)
+        else:
+            base_scores = _roll_scores()
     else:
         base_scores = {k: int(v) for k, v in build.base_scores.items()}
         error = (

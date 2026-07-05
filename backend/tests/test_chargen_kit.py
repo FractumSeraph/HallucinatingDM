@@ -82,6 +82,53 @@ async def test_spell_choices_are_validated(app_client):
     assert resp.status_code == 400
 
 
+async def test_class_spells_response_includes_starting_kit(app_client):
+    campaign, _scene, _ = await setup_game(app_client)
+    cid = campaign["id"]
+
+    # The wizard shows the player their gear up front — even for non-casters.
+    fighter = (await app_client.get(f"/api/v1/campaigns/{cid}/class-spells/fighter")).json()
+    assert fighter["is_caster"] is False
+    kit = {k["item"].lower() for k in fighter["starting_kit"]}
+    assert "chain mail" in kit and "longsword" in kit
+
+    wizard = (await app_client.get(f"/api/v1/campaigns/{cid}/class-spells/wizard")).json()
+    assert wizard["is_caster"] is True
+    assert any(k["item"].lower() == "spellbook" for k in wizard["starting_kit"])
+
+
+async def test_roll_abilities_endpoint(app_client):
+    campaign, _scene, _ = await setup_game(app_client)
+    cid = campaign["id"]
+    resp = await app_client.post(f"/api/v1/campaigns/{cid}/roll-abilities")
+    assert resp.status_code == 200
+    scores = resp.json()["scores"]
+    assert set(scores) == {"str", "dex", "con", "int", "wis", "cha"}
+    assert all(3 <= v <= 18 for v in scores.values())
+
+
+async def test_rolled_scores_from_wizard_are_used(app_client):
+    campaign, _scene, _ = await setup_game(app_client)
+    cid = campaign["id"]
+    # The wizard rolls first, then submits those exact scores with method=roll.
+    resp = await _make_character(
+        app_client, cid, klass="fighter", method="roll",
+        base_scores={"str": 16, "dex": 12, "con": 15, "int": 9, "wis": 13, "cha": 8},
+        skill_choices=["athletics", "intimidation"],
+    )
+    assert resp.status_code == 200
+    assert resp.json()["sheet_json"]["base_scores"] == {
+        "str": 16, "dex": 12, "con": 15, "int": 9, "wis": 13, "cha": 8,
+    }
+    # Out-of-range rolled scores are rejected.
+    bad = await _make_character(
+        app_client, cid, klass="fighter", method="roll",
+        base_scores={"str": 25, "dex": 12, "con": 15, "int": 9, "wis": 13, "cha": 8},
+        skill_choices=["athletics", "intimidation"],
+    )
+    assert bad.status_code == 400
+
+
 async def test_known_spells_reach_the_prompt(app_client):
     from app.ai.mock_provider import MockProvider
     from app.ai.provider import Done, LLMConfig, TextDelta, set_provider

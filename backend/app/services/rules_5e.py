@@ -164,6 +164,17 @@ def validate_standard_array(scores: dict[str, int]) -> str | None:
     return None
 
 
+def validate_rolled(scores: dict[str, int]) -> str | None:
+    """Sanity-check scores that came from the server roll endpoint: every
+    ability present and each within the 3–18 range a 4d6-drop-lowest can yield."""
+    if set(scores.keys()) != set(ABILITIES):
+        return "Scores must cover exactly str/dex/con/int/wis/cha"
+    for ability, score in scores.items():
+        if not 3 <= score <= 18:
+            return f"{ability} of {score} is outside the rollable 3–18 range"
+    return None
+
+
 def max_hp_for(hit_die: int, level: int, con_mod: int) -> int:
     """Level 1 = max die; later levels use the fixed average (PHB default)."""
     per_level = hit_die // 2 + 1
