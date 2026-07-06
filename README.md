@@ -125,6 +125,18 @@ docker compose up -d
 Everything (SQLite DB + uploaded PDFs) lives in `./data` — copying that folder is a
 full backup.
 
+**4. Updating**
+
+```bash
+./update.sh                 # plain app
+./update.sh --ollama        # if you run the bundled Ollama profile
+./update.sh --ollama --gpu  # bundled Ollama with the GPU override
+```
+
+One command: it backs up the database to `data/backups/` (keeping the last ten),
+pulls the latest code, rebuilds, restarts, and waits for the health check. Your
+campaigns are never touched — schema migrations run automatically on boot.
+
 ## Running a game (DM guide)
 
 **Campaign & scenes.** Create the campaign (name, description, tone — the AI honors

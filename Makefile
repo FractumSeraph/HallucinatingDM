@@ -1,4 +1,4 @@
-.PHONY: dev backend frontend test test-backend test-frontend lint migrate revision seed smoke-ollama build up
+.PHONY: dev backend frontend test test-backend test-frontend lint migrate revision seed smoke-ollama build up update
 
 # --- Development --------------------------------------------------------------
 dev: ## run backend (reload) + frontend (vite) — needs two terminals or use &
@@ -41,6 +41,9 @@ up-ollama:
 
 up-ollama-gpu:
 	docker compose --profile ollama -f docker-compose.yml -f docker-compose.gpu.yml up
+
+update: ## backup DB, pull latest, rebuild, restart (see ./update.sh --help comments)
+	./update.sh
 
 # Smoke test against a real local Ollama (pulls a small model).
 smoke-ollama:
