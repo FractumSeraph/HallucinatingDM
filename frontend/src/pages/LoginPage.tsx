@@ -52,7 +52,7 @@ export function LoginPage({ mode }: { mode: 'login' | 'register' }) {
   return (
     <div className="auth-page">
       <div className="auth-card card">
-        <h1>Labyrinths and Llamas</h1>
+        <h1>Llamas and Labyrinths</h1>
         <p className="muted">Your table. Your rules. An AI that never sleeps.</p>
         {registrationClosed ? (
           <p className="muted">

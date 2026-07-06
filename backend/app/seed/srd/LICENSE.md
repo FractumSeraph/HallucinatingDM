@@ -14,5 +14,5 @@ The structured dataset was derived from the MIT-licensed `dnd-oracle` package
 (https://www.npmjs.com/package/dnd-oracle), whose bundled data is itself an
 extraction of the SRD 5.1.
 
-Labyrinths and Llamas (formerly HallucinatingDM) is an independent product and is not affiliated with, endorsed,
+Llamas and Labyrinths (formerly HallucinatingDM) is an independent product and is not affiliated with, endorsed,
 sponsored, or specifically approved by Wizards of the Coast LLC.

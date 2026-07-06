@@ -1,4 +1,4 @@
-# 🦙 Labyrinths and Llamas
+# 🦙 Llamas and Labyrinths
 
 A **self-hosted, LLM-powered multiplayer D&D 5E platform** — running on your own hardware with **Ollama** or any OpenAI-compatible API.
 
@@ -289,4 +289,4 @@ for retcon. Full design notes in `docs/`.
 
 Game content from the **SRD 5.1** by Wizards of the Coast LLC, used under the
 **Creative Commons Attribution 4.0** license — see `backend/app/seed/srd/LICENSE.md`.
-Labyrinths and Llamas is an independent project, not affiliated with Wizards of the Coast.
+Llamas and Labyrinths is an independent project, not affiliated with Wizards of the Coast.
