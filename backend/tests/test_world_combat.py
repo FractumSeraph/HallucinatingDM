@@ -1,5 +1,7 @@
 """World entity, quest, combat, and lore tests (REST + AI tools)."""
 
+from sqlalchemy import select
+
 from app.ai.mock_provider import MockProvider
 from app.ai.provider import Done, LLMConfig, TextDelta, ToolCall, set_provider
 
@@ -266,6 +268,41 @@ async def test_recall_lore_tool(app_client):
         result = await registry.dispatch(ctx, "recall_lore", {"query": "what happened at the mill"})
         assert result.ok, result.error
         assert any("burned the mill" in r for r in result.data["results"])
+
+
+async def test_statless_npc_gets_default_hp(app_client):
+    """A freshly-invented NPC with no stat block still has a defined HP, so
+    damaging it reads as e.g. '5/8' rather than the old '0/?'."""
+    campaign, scene, character = await setup_game(app_client)
+
+    import app.ai.tools.core_tools  # noqa: F401
+    import app.ai.tools.world_tools  # noqa: F401
+    from app.ai.tools.registry import ToolContext, registry
+    from app.db import get_sessionmaker
+    from app.models import NPC, Campaign, Scene
+
+    async with get_sessionmaker()() as db:
+        campaign_row = await db.get(Campaign, campaign["id"])
+        scene_row = await db.get(Scene, scene["id"])
+        ctx = ToolContext(db=db, campaign=campaign_row, scene=scene_row)
+
+        created = await registry.dispatch(
+            ctx, "upsert_entity", {"kind": "npc", "name": "Masked Robber"}
+        )
+        assert created.ok, created.error
+
+        npc = (
+            await db.execute(select(NPC).where(NPC.name == "Masked Robber"))
+        ).scalars().first()
+        assert npc.hp_current == 8
+        assert (npc.stat_block_json or {}).get("hp") == 8
+
+        hit = await registry.dispatch(
+            ctx, "update_hp", {"target": "Masked Robber", "delta": -3}
+        )
+        assert hit.ok, hit.error
+        assert "?" not in hit.public_note  # was "0/?" before the fix
+        assert "5/8" in hit.public_note
 
 
 async def test_suggest_encounter_budget(app_client):

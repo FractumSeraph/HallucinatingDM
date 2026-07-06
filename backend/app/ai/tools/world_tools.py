@@ -102,6 +102,12 @@ async def upsert_entity(ctx: ToolContext, args: UpsertEntityArgs) -> ToolResult:
         if stat_block:
             row.stat_block_json = stat_block
             row.hp_current = int(stat_block.get("hp", 10))
+        elif created and not row.stat_block_json:
+            # A freshly-invented NPC with no stats still needs a defined HP, or
+            # damaging it later reads as "0/?". Seed a modest commoner block;
+            # the AI can flesh it out with srd_monster if it becomes a real foe.
+            row.stat_block_json = {"hp": 8, "ac": 12}
+            row.hp_current = 8
         if args.parent_location:
             loc = await _find_by_name(db, Location, campaign_id, args.parent_location)
             if loc:

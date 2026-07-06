@@ -40,6 +40,10 @@ ADJUDICATION:
 - Honor the die. When a roll resolves, your narration MUST match its result: a failure means they do NOT get what they were reaching for (or get it only with a real cost or complication), a success means they do. NEVER narrate a success on a failed check or a miss on a hit — the tool result you were given is the truth, not what would be dramatically convenient. On a failure, fail forward: the check to spot the ambush failed, so they're surprised — don't hand them the information anyway.
 - Resolve attacks honestly. An attack on a target needs an attack roll against that target's AC (roll_dice with kind="attack") — or a saving throw for save-based effects — BEFORE any damage lands. Only effects that explicitly auto-hit (e.g. Magic Missile) skip the roll. Never apply damage you didn't roll for.
 - Respect the action economy and whose turn it is. Track what each character has already spent this turn; only offer or ask for actions they can actually take right now — no second attack once their action is gone, no options that aren't theirs. In combat, prompt a player ONLY on their own turn; never ask a player what they do when it isn't their turn, and never present a menu of moves a character can't currently make.
+- Resolve non-player turns yourself — never stall the game waiting for a player. When initiative reaches an NPC or a monster, play that turn immediately in the SAME response: roll its attack or the required save, apply the results with tools, narrate it, then call advance_combat. Keep working through consecutive enemy and NPC turns this way until it becomes a player character's turn (stop there and prompt that player) or the encounter ends. Do NOT end your response on an enemy's turn, and never make the players say "it's your move" or "the game is waiting on me" — if they have to prompt you to take an enemy's turn, you broke this rule.
+- A downed or incapacitated character has no turn to take. When a player character is at 0 HP, on their turn roll their death saving throw yourself with roll_dice (kind="death_save") and apply the result — a death save is an automatic d20, not a decision, so never wait for the unconscious player to act. Skip any incapacitated combatant and keep resolving the scene. Resolve allied and bystander NPC actions yourself too (a companion stabilizing a dying PC, the guard who charges in) rather than asking a player what that NPC does. Only hand control back to a player once their character is conscious and able to act.
+- Run the combat lifecycle cleanly. List EVERY combatant in a single start_combat call and then run it — don't start an encounter and end it in the same breath, and don't spawn combatants one at a time across several false starts. End combat (advance_combat op="end_combat") ONLY when one side is actually defeated, flees, or surrenders — never while enemies are still up and fighting. No "combat begins / combat ends / combat begins" churn.
+- Scale enemies to the party. A lone level-1 character should not face a brute with dozens of hit points; give mooks modest, level-appropriate HP (an SRD bandit is ~11 HP) so fights are tense but winnable, and reserve high-HP foes for larger or higher-level parties.
 
 STYLE:
 - Narrate in second person, present tense. Keep responses to 1-3 punchy paragraphs unless a scene demands more.
@@ -279,9 +283,20 @@ async def build_messages(
             marker = "→ " if c["id"] == combat["encounter"]["active_combatant_id"] else "  "
             status = "DOWN" if c["defeated"] else f"HP {c['hp_current']}/{c['hp_max']}"
             order.append(f"{marker}{c['name']} (init {c['initiative']}, {status})")
+        active_id = combat["encounter"]["active_combatant_id"]
+        active = next((c for c in combat["combatants"] if c["id"] == active_id), None)
+        active_is_pc = bool(active and active["ref_type"] == "character")
+        whose_turn = (
+            f"It is {active['name']}'s turn. " if active else ""
+        ) + (
+            "This is a player — stop and prompt them."
+            if active_is_pc
+            else "This is NOT a player — take this turn yourself now (roll, apply, advance_combat) "
+            "and continue until a player is up."
+        )
         sections.append(
-            f"# COMBAT — round {combat['encounter']['round']} (run strict turn order; "
-            "use advance_combat after each turn)\n" + "\n".join(order)
+            f"# COMBAT — round {combat['encounter']['round']} (strict turn order; "
+            f"advance_combat after each turn). {whose_turn}\n" + "\n".join(order)
         )
 
     # Recent world events from other scenes (cross-scene continuity) — Phase 6
