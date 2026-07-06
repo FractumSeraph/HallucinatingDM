@@ -45,6 +45,10 @@ export function DmScreen() {
           <PinnedFactsPanel campaignId={cid} />
         </section>
         <section className="card">
+          <h3>Table content level</h3>
+          <ContentLevelPanel campaignId={cid} />
+        </section>
+        <section className="card">
           <h3>Model &amp; usage</h3>
           <CampaignLlmPanel campaignId={cid} />
         </section>
@@ -360,6 +364,55 @@ function CampaignLlmPanel({ campaignId }: { campaignId: string }) {
         </button>
         {status && <span className="muted">{status}</span>}
       </div>
+    </div>
+  )
+}
+
+const CONTENT_LEVELS = [
+  { value: 'fade-to-black', label: 'Fade to black', hint: 'Bloodless — cut away from anything graphic' },
+  { value: 'standard', label: 'Standard fantasy', hint: 'Published-adventure violence (PG-13)' },
+  { value: 'grim', label: 'Grim', hint: 'Darker, grittier description' },
+]
+
+function ContentLevelPanel({ campaignId }: { campaignId: string }) {
+  const { data: campaign } = useCampaign(campaignId)
+  const qc = useQueryClient()
+  const current = (campaign?.settings_json.content_level as string | undefined) ?? 'standard'
+
+  async function save(level: string) {
+    if (!campaign) return // settings not loaded yet — don't clobber them
+    await api.patch(`/campaigns/${campaignId}`, {
+      settings: { ...campaign.settings_json, content_level: level },
+    })
+    await qc.invalidateQueries({ queryKey: ['campaigns', campaignId] })
+  }
+
+  return (
+    <div className="col">
+      <p className="muted">
+        How graphic the AI DM's violence descriptions may get. This goes into every
+        prompt — it sets the tone, and helps stop overcautious models refusing to
+        narrate combat.
+      </p>
+      {CONTENT_LEVELS.map((level) => (
+        <label
+          key={level.value}
+          className="row"
+          style={{ alignItems: 'baseline', justifyContent: 'flex-start' }}
+        >
+          <input
+            type="radio"
+            name="content-level"
+            style={{ width: 'auto' }}
+            checked={current === level.value}
+            onChange={() => save(level.value)}
+          />
+          <span>
+            <strong>{level.label}</strong>{' '}
+            <span className="muted">— {level.hint}</span>
+          </span>
+        </label>
+      ))}
     </div>
   )
 }
