@@ -270,6 +270,147 @@ async def test_recall_lore_tool(app_client):
         assert any("burned the mill" in r for r in result.data["results"])
 
 
+async def _combat_setup(app_client, foes=("wolf",)):
+    """Game + active encounter, returning (scene dict, character dict, snapshot)."""
+    campaign, scene, character = await setup_game(app_client)
+
+    from app.db import get_sessionmaker
+    from app.models import Scene
+    from app.services import combat as combat_service
+
+    async with get_sessionmaker()() as db:
+        scene_row = await db.get(Scene, scene["id"])
+        snapshot = await combat_service.start_encounter(
+            db, scene_row, [character["name"], *foes]
+        )
+    return campaign, scene, character, snapshot
+
+
+async def test_advance_turn_auto_rolls_death_saves(app_client):
+    """A downed character's turn IS their death save — the server rolls it and
+    moves on instead of waiting on the unconscious player."""
+    campaign, scene, character, snapshot = await _combat_setup(app_client)
+
+    from app.db import get_sessionmaker
+    from app.models import Character, Scene
+    from app.services import combat as combat_service
+
+    async with get_sessionmaker()() as db:
+        char_row = await db.get(Character, character["id"])
+        char_row.hp_current = 0
+        char_row.conditions_json = ["unconscious"]
+        char_row.death_saves_json = {"successes": 0, "failures": 0}
+        # Put the wolf up so advancing lands on the downed character next.
+        wolf = next(c for c in snapshot["combatants"] if c["name"] == "Wolf")
+        encounter = await combat_service.get_active_encounter(db, scene["id"])
+        encounter.active_combatant_id = wolf["id"]
+        await db.commit()
+
+        scene_row = await db.get(Scene, scene["id"])
+        after = await combat_service.advance_turn(db, scene_row)
+        # Mira's turn was auto-resolved; initiative came back around to the wolf.
+        assert after["encounter"]["active_combatant_id"] == wolf["id"]
+        await db.refresh(char_row)
+        saves = char_row.death_saves_json
+        rolled = char_row.hp_current == 1 or (  # natural 20 revives at 1 HP
+            saves.get("successes", 0) + saves.get("failures", 0) >= 1
+        )
+        assert rolled
+
+    messages = (await app_client.get(f"/api/v1/scenes/{scene['id']}/messages")).json()
+    assert any("death save" in m["content"] for m in messages)
+
+
+async def test_end_combat_refused_while_foes_stand(app_client):
+    """The AI can't call the fight over with an enemy still up; removing the
+    foe (fled/surrendered) or the human DM's force-end both work."""
+    import pytest
+
+    campaign, scene, character, _snapshot = await _combat_setup(app_client)
+
+    from app.db import get_sessionmaker
+    from app.models import Scene
+    from app.services import combat as combat_service
+
+    async with get_sessionmaker()() as db:
+        scene_row = await db.get(Scene, scene["id"])
+        with pytest.raises(combat_service.CombatError, match="Wolf"):
+            await combat_service.end_encounter(db, scene_row)
+        # The wolf flees — now the encounter can end honestly.
+        await combat_service.remove_combatant(db, scene_row, "Wolf")
+        ended = await combat_service.end_encounter(db, scene_row)
+        assert ended["encounter"] is None
+
+    # And the human DM's REST end is a force — no guard.
+    campaign2, scene2, character2, _ = await _combat_setup(app_client)
+    resp = await app_client.post(f"/api/v1/scenes/{scene2['id']}/combat/end")
+    assert resp.status_code == 200
+
+
+async def test_ai_start_combat_rejects_deadly_encounters(app_client):
+    """A thug (100 XP) meets a solo level-1's deadly threshold (100) — exactly
+    the playtest fight — so the AI must consciously pass allow_deadly."""
+    campaign, scene, character = await setup_game(app_client)
+
+    import app.ai.tools.world_tools  # noqa: F401
+    from app.ai.tools.registry import ToolContext, registry
+    from app.db import get_sessionmaker
+    from app.models import Campaign, Scene
+    from app.services import combat as combat_service
+
+    async with get_sessionmaker()() as db:
+        campaign_row = await db.get(Campaign, campaign["id"])
+        scene_row = await db.get(Scene, scene["id"])
+        ctx = ToolContext(db=db, campaign=campaign_row, scene=scene_row)
+
+        result = await registry.dispatch(
+            ctx, "start_combat", {"participants": [character["name"], "thug"]}
+        )
+        assert not result.ok
+        assert "allow_deadly" in result.error
+        # The rejection left nothing behind.
+        snap = await combat_service.combat_snapshot(db, scene["id"])
+        assert snap["encounter"] is None
+
+        # Explicit override for a story-critical lethal fight still works.
+        result = await registry.dispatch(
+            ctx,
+            "start_combat",
+            {"participants": [character["name"], "thug"], "allow_deadly": True},
+        )
+        assert result.ok, result.error
+
+
+async def test_ai_turn_auto_continues_enemy_turns(app_client, monkeypatch):
+    """After an AI turn, if initiative still sits on a monster, the server
+    re-triggers the AI itself — and stops if no progress is made."""
+    campaign, scene, character, snapshot = await _combat_setup(app_client)
+
+    import app.ai.dm_agent as dm_agent
+    from app.db import get_sessionmaker
+    from app.services import combat as combat_service
+
+    async with get_sessionmaker()() as db:
+        wolf = next(c for c in snapshot["combatants"] if c["name"] == "Wolf")
+        encounter = await combat_service.get_active_encounter(db, scene["id"])
+        encounter.active_combatant_id = wolf["id"]
+        await db.commit()
+
+    fired: list[str] = []
+    monkeypatch.setattr(dm_agent, "trigger_turn", lambda sid: fired.append(sid))
+    dm_agent.reset_combat_chain(scene["id"])
+
+    make_mock([[TextDelta("The wolf circles, snarling."), Done()]])
+    await dm_agent.run_turn(scene["id"])
+    assert fired == [scene["id"]]  # enemy still up → server re-triggers
+
+    # Second turn makes no progress (still the wolf) → stall guard, no spin.
+    make_mock([[TextDelta("The wolf snarls again."), Done()]])
+    await dm_agent.run_turn(scene["id"])
+    assert fired == [scene["id"]]
+    set_provider(None)
+
+
 async def test_statless_npc_gets_default_hp(app_client):
     """A freshly-invented NPC with no stat block still has a defined HP, so
     damaging it reads as e.g. '5/8' rather than the old '0/?'."""

@@ -56,6 +56,7 @@ async def next_turn(scene_id: str, db: DbSession, user: CurrentUser) -> dict[str
 async def end_combat(scene_id: str, db: DbSession, user: CurrentUser) -> dict[str, Any]:
     scene = await _dm_scene(scene_id, db, user)
     try:
-        return await combat_service.end_encounter(db, scene)
+        # The human DM's call is final — no standing-foes guard here.
+        return await combat_service.end_encounter(db, scene, force=True)
     except combat_service.CombatError as e:
         raise bad_request(str(e)) from e

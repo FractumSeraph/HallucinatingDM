@@ -106,7 +106,7 @@ async def upsert_entity(ctx: ToolContext, args: UpsertEntityArgs) -> ToolResult:
             # A freshly-invented NPC with no stats still needs a defined HP, or
             # damaging it later reads as "0/?". Seed a modest commoner block;
             # the AI can flesh it out with srd_monster if it becomes a real foe.
-            row.stat_block_json = {"hp": 8, "ac": 12}
+            row.stat_block_json = {"hp": 8, "ac": 12, "cr": "0"}
             row.hp_current = 8
         if args.parent_location:
             loc = await _find_by_name(db, Location, campaign_id, args.parent_location)
@@ -265,18 +265,27 @@ class StartCombatArgs(BaseModel):
         min_length=1,
         description="Character/NPC names and/or SRD monsters, e.g. ['Mira', 'goblin x3']",
     )
+    allow_deadly: bool = Field(
+        default=False,
+        description="Confirm an encounter at/over the party's DEADLY XP budget. "
+        "Only when the story truly demands a potentially lethal fight.",
+    )
 
 
 @tool(
     "start_combat",
     "Begin combat: server rolls initiative for everyone and creates the turn "
-    "tracker. Monsters get real SRD stats.",
+    "tracker. Monsters get real SRD stats. List ALL combatants in one call. "
+    "Encounters at/over the party's deadly XP budget are rejected unless "
+    "allow_deadly=true.",
     StartCombatArgs,
     mutating=True,
 )
 async def start_combat(ctx: ToolContext, args: StartCombatArgs) -> ToolResult:
     try:
-        snapshot = await combat_service.start_encounter(ctx.db, ctx.scene, args.participants)
+        snapshot = await combat_service.start_encounter(
+            ctx.db, ctx.scene, args.participants, enforce_budget=not args.allow_deadly
+        )
     except combat_service.CombatError as e:
         return ToolResult(ok=False, error=str(e))
     order = [
@@ -296,12 +305,19 @@ async def start_combat(ctx: ToolContext, args: StartCombatArgs) -> ToolResult:
 
 
 class AdvanceCombatArgs(BaseModel):
-    op: Literal["next_turn", "end_combat"] = "next_turn"
+    op: Literal["next_turn", "end_combat", "remove"] = "next_turn"
+    target: str = Field(
+        default="",
+        description="For op='remove': the combatant who fled, surrendered, or "
+        "stood down — they leave the fight without being killed.",
+    )
 
 
 @tool(
     "advance_combat",
-    "Move to the next combatant's turn, or end the encounter.",
+    "Move to the next combatant's turn, remove a combatant who fled or "
+    "surrendered (op='remove', target=name), or end the encounter. Ending is "
+    "refused while foes are still up — defeat or remove them first.",
     AdvanceCombatArgs,
     mutating=True,
 )
@@ -314,7 +330,12 @@ async def advance_combat(ctx: ToolContext, args: AdvanceCombatArgs) -> ToolResul
                 content="🕊️ **Combat ends.**",
             )
             return ToolResult(ok=True, data={"ended": True})
-        snapshot = await combat_service.advance_turn(ctx.db, ctx.scene)
+        if args.op == "remove":
+            if not args.target:
+                return ToolResult(ok=False, error="op='remove' needs target=<combatant name>")
+            snapshot = await combat_service.remove_combatant(ctx.db, ctx.scene, args.target)
+        else:
+            snapshot = await combat_service.advance_turn(ctx.db, ctx.scene)
     except combat_service.CombatError as e:
         return ToolResult(ok=False, error=str(e))
     active = next(

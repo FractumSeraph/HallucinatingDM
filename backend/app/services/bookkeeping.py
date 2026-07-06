@@ -28,6 +28,42 @@ def broadcast_character(campaign_id: str, character: Character) -> None:
     )
 
 
+async def _sync_npc_combatant(ctx: ToolContext, npc: NPC) -> None:
+    """Propagate an NPC's HP/defeat to its combatant row in the scene's active
+    encounter, if it's in one."""
+    from sqlalchemy import select
+
+    from app.models import CombatEncounter
+
+    encounter = (
+        (
+            await ctx.db.execute(
+                select(CombatEncounter).where(
+                    CombatEncounter.scene_id == ctx.scene.id,
+                    CombatEncounter.status == "active",
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if not encounter:
+        return
+    combatants = (
+        await ctx.db.execute(
+            select(Combatant).where(
+                Combatant.encounter_id == encounter.id,
+                Combatant.ref_type == "npc",
+                Combatant.ref_id == npc.id,
+            )
+        )
+    ).scalars()
+    for combatant in combatants:
+        combatant.hp_current = npc.hp_current
+        if (npc.hp_current or 0) <= 0 or npc.status == "dead":
+            combatant.defeated = True
+
+
 async def apply_hp_change(
     ctx: ToolContext, target: Resolved, delta: int, reason: str = ""
 ) -> dict[str, Any]:
@@ -94,6 +130,10 @@ async def apply_hp_change(
             npc.status = "dead"
             result["defeated"] = True
         result["hp"] = f"{npc.hp_current}/{max_hp or '?'}"
+        # Keep this NPC's initiative-tracker entry in step, or the encounter
+        # would still count them as standing (and show stale HP) after they
+        # drop — the name resolver prefers the NPC row over its combatant.
+        await _sync_npc_combatant(ctx, npc)
 
     else:  # combatant (monster instance)
         combatant: Combatant = row
@@ -112,6 +152,13 @@ async def apply_hp_change(
             combatant.defeated = True
             result["defeated"] = True
         result["hp"] = f"{combatant.hp_current}/{combatant.hp_max or '?'}"
+        # Mirror onto the persistent NPC row when this combatant wraps one.
+        if combatant.ref_type == "npc" and combatant.ref_id:
+            npc = await ctx.db.get(NPC, combatant.ref_id)
+            if npc:
+                npc.hp_current = combatant.hp_current
+                if combatant.defeated and delta < 0:
+                    npc.status = "dead"
 
     await ctx.db.commit()
     return result

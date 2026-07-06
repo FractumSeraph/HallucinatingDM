@@ -48,8 +48,9 @@ async def maybe_trigger_ai_turn(
 def _resolve(scene_id: str) -> None:
     """Clear the round and kick the AI turn."""
     _declared.pop(scene_id, None)
-    from app.ai.dm_agent import trigger_turn
+    from app.ai.dm_agent import reset_combat_chain, trigger_turn
 
+    reset_combat_chain(scene_id)  # fresh player input re-arms combat auto-continue
     trigger_turn(scene_id)
 
 
