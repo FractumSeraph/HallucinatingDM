@@ -383,6 +383,21 @@ async def resolve_turn(scene_id: str, db: DbSession, user: CurrentUser) -> dict[
     return {"ok": True}
 
 
+@router.delete("/scenes/{scene_id}")
+async def delete_scene(scene_id: str, db: DbSession, user: CurrentUser) -> dict[str, bool]:
+    """Permanently delete a scene and its chat log, rolls, combat history, and
+    AI traces. Campaign-level memory (world events, the campaign summary)
+    survives. DM only; no undo."""
+    scene = await db.get(Scene, scene_id)
+    if not scene:
+        raise not_found("Scene")
+    await require_campaign_dm(scene.campaign_id, db, user)
+    from app.services.purge import purge_scene
+
+    await purge_scene(db, scene)
+    return {"ok": True}
+
+
 @router.post("/scenes/{scene_id}/suggest-actions")
 async def suggest_actions_endpoint(
     scene_id: str, db: DbSession, user: CurrentUser

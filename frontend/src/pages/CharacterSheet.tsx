@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../api/client'
 import type { Character, InventoryItem } from '../api/types'
@@ -14,6 +14,7 @@ function mod(score: number): string {
 
 export function CharacterSheet() {
   const { cid, charId } = useParams() as { cid: string; charId: string }
+  const navigate = useNavigate()
   const qc = useQueryClient()
   const [error, setError] = useState('')
 
@@ -158,6 +159,37 @@ export function CharacterSheet() {
           )}
           <h4>Notes</h4>
           <NotesEditor charId={charId} initial={c.notes} onSave={(notes) => patch({ notes })} />
+          <div className="row" style={{ marginTop: '1rem' }}>
+            {c.status === 'active' && (
+              <button
+                title="Keep the sheet, but step out of play"
+                onClick={() => patch({ status: 'retired' })}
+              >
+                Retire
+              </button>
+            )}
+            <button
+              className="btn-danger"
+              onClick={async () => {
+                if (
+                  !confirm(
+                    `Permanently delete ${c.name}? The sheet and inventory are gone ` +
+                      `for good (old chat lines keep their text). Consider Retire instead.`,
+                  )
+                )
+                  return
+                try {
+                  await api.delete(`/characters/${charId}`)
+                  qc.invalidateQueries({ queryKey: ['campaigns', cid, 'characters'] })
+                  navigate(`/campaigns/${cid}`)
+                } catch (err) {
+                  setError(err instanceof ApiError ? err.message : 'Delete failed')
+                }
+              }}
+            >
+              🗑 Delete
+            </button>
+          </div>
         </section>
       </div>
     </div>

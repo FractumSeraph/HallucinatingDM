@@ -20,6 +20,19 @@ export function useScenes(campaignId: string) {
 export function SceneList({ campaignId, isDm }: { campaignId: string; isDm: boolean }) {
   const { data: scenes, isLoading } = useScenes(campaignId)
   const [showCreate, setShowCreate] = useState(false)
+  const qc = useQueryClient()
+
+  async function deleteScene(s: Scene) {
+    if (
+      !confirm(
+        `Delete the scene "${s.name}"? Its chat log, rolls, and combat history ` +
+          `are gone for good (the campaign's world and recaps survive).`,
+      )
+    )
+      return
+    await api.delete(`/scenes/${s.id}`)
+    await qc.invalidateQueries({ queryKey: ['campaigns', campaignId, 'scenes'] })
+  }
 
   return (
     <div className="col">
@@ -31,8 +44,11 @@ export function SceneList({ campaignId, isDm }: { campaignId: string; isDm: bool
       )}
       <ul className="plain-list">
         {scenes?.map((s) => (
-          <li key={s.id}>
-            <Link to={`/campaigns/${campaignId}/scenes/${s.id}`} className="scene-row">
+          <li key={s.id} className="row" style={{ gap: '0.35rem' }}>
+            <Link
+              to={`/campaigns/${campaignId}/scenes/${s.id}`}
+              className="scene-row grow"
+            >
               <span className="grow">
                 <strong>{s.name}</strong>
                 <span className="muted"> · {KIND_LABEL[s.kind]}</span>
@@ -42,6 +58,16 @@ export function SceneList({ campaignId, isDm }: { campaignId: string; isDm: bool
               </span>
               {s.status !== 'active' && <span className="badge">{s.status}</span>}
             </Link>
+            {isDm && (
+              <button
+                className="btn-danger"
+                title="Delete this scene and its log (no undo)"
+                aria-label={`Delete scene ${s.name}`}
+                onClick={() => void deleteScene(s)}
+              >
+                ✕
+              </button>
+            )}
           </li>
         ))}
       </ul>

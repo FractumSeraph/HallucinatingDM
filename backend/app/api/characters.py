@@ -181,6 +181,21 @@ async def patch_character(
     return character_out(character)
 
 
+@router.delete("/characters/{character_id}")
+async def delete_character(
+    character_id: str, db: DbSession, user: CurrentUser
+) -> dict[str, bool]:
+    """Permanently delete a character (owner or DM). Their inventory and
+    initiative entries go too; old chat lines keep their text but drop the
+    link. Prefer retiring (status="retired") to keep the sheet around."""
+    character, role = await _get_character(character_id, db, user)
+    _require_owner_or_dm(character, user.id, role)
+    from app.services.purge import purge_character
+
+    await purge_character(db, character)
+    return {"ok": True}
+
+
 class ChargenSuggestBody(BaseModel):
     concept: str = Field(min_length=3, max_length=500)
 

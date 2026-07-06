@@ -135,13 +135,16 @@ async def update_campaign(
 
 @router.delete("/{campaign_id}")
 async def delete_campaign(campaign_id: str, db: DbSession, user: CurrentUser) -> dict[str, bool]:
+    """Permanently delete the campaign and everything in it — scenes, chat
+    logs, characters, world entities, documents. There is no undo."""
     campaign = await db.get(Campaign, campaign_id)
     if not campaign:
         raise not_found("Campaign")
     if campaign.owner_id != user.id:
         raise forbidden("Only the campaign owner can delete it")
-    await db.delete(campaign)
-    await db.commit()
+    from app.services.purge import purge_campaign
+
+    await purge_campaign(db, campaign)
     return {"ok": True}
 
 

@@ -1,13 +1,16 @@
-import { Link, useParams } from 'react-router-dom'
-import { useCampaign, useMembers, useRecaps } from '../api/hooks'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { api } from '../api/client'
+import { useCampaign, useMe, useMembers, useRecaps } from '../api/hooks'
 import { SceneList } from '../components/SceneList'
 import { CharacterList } from '../components/CharacterList'
 import { useLiveCache } from '../ws/useLiveCache'
 
 export function LobbyPage() {
   const { cid } = useParams() as { cid: string }
+  const navigate = useNavigate()
   const { data: campaign, isLoading } = useCampaign(cid)
   const { data: members } = useMembers(cid)
+  const { data: me } = useMe()
   useLiveCache(cid)
 
   if (isLoading) return <div className="page-pad muted">Loading…</div>
@@ -64,6 +67,24 @@ export function LobbyPage() {
             <p className="muted" style={{ marginTop: '1rem' }}>
               Invite code: <code className="invite-code">{campaign.invite_code}</code>
             </p>
+          )}
+          {me?.id === campaign.owner_id && (
+            <button
+              className="btn-danger"
+              style={{ marginTop: '1rem' }}
+              onClick={async () => {
+                const typed = prompt(
+                  `This permanently deletes "${campaign.name}" — every scene, chat log, ` +
+                    `character, and world entry. There is no undo.\n\nType the campaign ` +
+                    `name to confirm:`,
+                )
+                if (typed !== campaign.name) return
+                await api.delete(`/campaigns/${cid}`)
+                navigate('/campaigns')
+              }}
+            >
+              🗑 Delete campaign
+            </button>
           )}
         </section>
       </div>
