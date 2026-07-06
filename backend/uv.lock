@@ -568,7 +568,7 @@ wheels = [
 ]
 
 [[package]]
-name = "labyrinths-and-llamas"
+name = "llamas-and-labyrinths"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
