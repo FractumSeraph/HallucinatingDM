@@ -1,5 +1,6 @@
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { api } from '../api/client'
+import { useQueryClient } from '@tanstack/react-query'
+import { api, ApiError } from '../api/client'
 import { useCampaign, useMe, useMembers, useRecaps } from '../api/hooks'
 import { SceneList } from '../components/SceneList'
 import { CharacterList } from '../components/CharacterList'
@@ -8,6 +9,7 @@ import { useLiveCache } from '../ws/useLiveCache'
 export function LobbyPage() {
   const { cid } = useParams() as { cid: string }
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { data: campaign, isLoading } = useCampaign(cid)
   const { data: members } = useMembers(cid)
   const { data: me } = useMe()
@@ -78,8 +80,22 @@ export function LobbyPage() {
                     `character, and world entry. There is no undo.\n\nType the campaign ` +
                     `name to confirm:`,
                 )
-                if (typed !== campaign.name) return
-                await api.delete(`/campaigns/${cid}`)
+                if (typed === null) return // cancelled — no message needed
+                if (typed.trim().toLowerCase() !== campaign.name.trim().toLowerCase()) {
+                  alert(`That didn't match "${campaign.name}" — nothing was deleted.`)
+                  return
+                }
+                try {
+                  await api.delete(`/campaigns/${cid}`)
+                } catch (err) {
+                  alert(
+                    err instanceof ApiError
+                      ? `Delete failed: ${err.message}`
+                      : 'Delete failed — check the server logs.',
+                  )
+                  return
+                }
+                await qc.invalidateQueries({ queryKey: ['campaigns'] })
                 navigate('/campaigns')
               }}
             >
