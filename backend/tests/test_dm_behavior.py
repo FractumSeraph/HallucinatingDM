@@ -52,4 +52,15 @@ async def test_prompt_carries_behavioral_guidance(app_client):
     # Action economy + turn discipline: no impossible/off-turn prompts.
     assert "Respect the action economy" in system
     assert "ONLY on their own turn" in system
+    # Never stall: the AI resolves enemy/NPC turns itself instead of waiting.
+    assert "Resolve non-player turns yourself" in system
+    assert "advance_combat" in system
+    # Death saves are automatic; don't wait on a downed player.
+    assert 'roll_dice (kind="death_save")' in system
+    assert "never wait for the unconscious player" in system
+    # Clean combat lifecycle — no begin/end churn, no premature end.
+    assert "Run the combat lifecycle cleanly" in system
+    assert "while enemies are still up and fighting" in system
+    # Enemies scaled to the party.
+    assert "Scale enemies to the party" in system
     set_provider(None)
