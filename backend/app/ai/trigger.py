@@ -39,8 +39,24 @@ async def maybe_trigger_ai_turn(
 
     # A player's in-character action is a declaration to gather; the DM's own
     # messages and dice-roll responses continue the turn immediately.
-    if message.author_type == "player" and message.kind == "chat" and message.character_id and db:
-        await _declare(db, scene, message.character_id)
+    if message.author_type == "player" and message.kind == "chat" and db:
+        if not message.character_id:
+            # A player with no character can't act. If a party is mid-round,
+            # treat it as table talk (don't cut the round short); with no
+            # roster yet, behave as before and let the AI respond.
+            if await _participants(db, scene):
+                return
+            _resolve(scene.id)
+            return
+        # In combat, initiative — not declaration-gathering — decides who may
+        # act: the acting player's message must resolve at once, or the round
+        # would wait on players who aren't allowed to act right now.
+        from app.services.combat import get_active_encounter
+
+        if await get_active_encounter(db, scene.id):
+            _resolve(scene.id)
+        else:
+            await _declare(db, scene, message.character_id)
     else:
         _resolve(scene.id)
 
@@ -55,16 +71,29 @@ def _resolve(scene_id: str) -> None:
 
 
 async def _participants(db: AsyncSession, scene: Scene) -> set[str]:
-    """Active player characters taking part in this scene (its roster)."""
+    """Characters whose declaration the round waits for: active roster members
+    who are conscious — an unconscious PC can't act, so they can't block."""
     ids = list(scene.party_json or [])
     if not ids:
         return set()
-    rows = (
-        await db.execute(
-            select(Character.id).where(Character.id.in_(ids), Character.status == "active")
-        )
-    ).scalars()
-    return set(rows)
+    rows = list(
+        (
+            await db.execute(
+                select(Character.id, Character.user_id).where(
+                    Character.id.in_(ids),
+                    Character.status == "active",
+                    Character.hp_current > 0,
+                )
+            )
+        ).all()
+    )
+    # Don't wait on players who aren't even connected (closed laptop, dropped
+    # phone): their character re-joins the round the moment they speak again.
+    # When nobody is on a websocket (e.g. pure-REST clients), skip the filter.
+    connected = hub.campaign_user_ids(scene.campaign_id)
+    if connected:
+        rows = [r for r in rows if r.user_id in connected]
+    return {r.id for r in rows}
 
 
 async def _declare(db: AsyncSession, scene: Scene, character_id: str) -> None:

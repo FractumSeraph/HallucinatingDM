@@ -10,6 +10,16 @@ import { useCampaignSocket } from './useCampaignSocket'
 export function useLiveCache(campaignId: string | undefined) {
   const qc = useQueryClient()
 
+  // Events missed while disconnected (phone backgrounded, dropped wifi) are
+  // gone for good — resync every live cache from REST on reconnect so combat
+  // trackers, HP bars, and quests don't stay frozen at pre-drop values.
+  const resync = () => {
+    if (!campaignId) return
+    qc.invalidateQueries({ queryKey: ['campaigns', campaignId] })
+    qc.invalidateQueries({ queryKey: ['scenes'] })
+    qc.invalidateQueries({ queryKey: ['characters'] })
+  }
+
   return useCampaignSocket(campaignId, (e: WsEvent) => {
     if (!campaignId) return
     switch (e.type) {
@@ -67,5 +77,5 @@ export function useLiveCache(campaignId: string | undefined) {
       default:
         break
     }
-  })
+  }, resync)
 }
