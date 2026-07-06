@@ -43,8 +43,54 @@ def held_for_approval_result(approval_id: str) -> ToolResult:
 MAX_TOOL_ROUNDS = 8
 COALESCE_SECONDS = 1.0
 
+# Server-driven combat: after a turn, if initiative still sits on an NPC or
+# monster, we re-trigger the AI ourselves instead of waiting for a player to
+# nudge it. Chain state guards against spinning: scene_id -> (combatant we
+# last continued for, consecutive auto-continues).
+MAX_COMBAT_CHAIN = 12
+_combat_chain: dict[str, tuple[str | None, int]] = {}
+
 _scene_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 _pending_scenes: set[str] = set()
+
+
+def reset_combat_chain(scene_id: str) -> None:
+    """A fresh player/DM message re-arms the auto-continue budget."""
+    _combat_chain.pop(scene_id, None)
+
+
+async def _maybe_continue_combat(db, scene) -> None:
+    """If combat is active and it's a non-player's turn, immediately schedule
+    another AI turn — players should never have to prod the DM to run enemy
+    turns. Autonomous mode only; in copilot/assist the human drives pacing."""
+    if scene.dm_mode != "ai":
+        return
+    from app.services.combat import combat_snapshot
+
+    snapshot = await combat_snapshot(db, scene.id)
+    encounter = snapshot["encounter"]
+    if not encounter:
+        reset_combat_chain(scene.id)
+        return
+    active = next(
+        (c for c in snapshot["combatants"] if c["id"] == encounter["active_combatant_id"]),
+        None,
+    )
+    if not active or active["defeated"] or active["ref_type"] == "character":
+        reset_combat_chain(scene.id)
+        return
+    last_id, count = _combat_chain.get(scene.id, (None, 0))
+    if active["id"] == last_id:
+        # The turn we just ran didn't advance past this combatant — the model
+        # is stuck; stop so we don't spin. A player message re-arms the chain.
+        log.warning("combat auto-continue stalled on %s (scene=%s)", active["name"], scene.id)
+        return
+    if count >= MAX_COMBAT_CHAIN:
+        log.warning("combat auto-continue budget exhausted (scene=%s)", scene.id)
+        return
+    _combat_chain[scene.id] = (active["id"], count + 1)
+    log.info("auto-continuing combat for %s (scene=%s)", active["name"], scene.id)
+    trigger_turn(scene.id)
 
 
 def trigger_turn(scene_id: str) -> None:
@@ -372,6 +418,11 @@ async def run_turn(scene_id: str) -> None:
                 await maybe_rollup(db, campaign, scene)
             except Exception:
                 log.exception("rolling summary failed (scene=%s)", scene_id)
+
+            try:
+                await _maybe_continue_combat(db, scene)
+            except Exception:
+                log.exception("combat auto-continue failed (scene=%s)", scene_id)
         except Exception as exc:
             log.exception("AI turn failed (scene=%s)", scene_id)
             turn.status = "error"
