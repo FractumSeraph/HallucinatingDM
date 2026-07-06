@@ -121,11 +121,12 @@ async def _run_when_free(scene_id: str) -> None:
         log.exception("AI turn crashed (scene=%s)", scene_id)
 
 
-def _status(campaign_id: str, scene_id: str, status: str) -> None:
+def _status(campaign_id: str, scene_id: str, status: str, dm_only: bool = False) -> None:
     hub.broadcast(
         campaign_id,
         events.make_event(events.AI_STATUS, campaign_id, {"status": status}, scene_id),
         scene_id=scene_id,
+        dm_only=dm_only,
     )
 
 
@@ -167,14 +168,16 @@ async def run_turn(scene_id: str) -> None:
         steps: list[dict[str, Any]] = []
         usage_total = {"prompt_tokens": 0, "completion_tokens": 0}
 
+        # Assist mode: the whole turn (narration, tool chips, status line) is a
+        # private draft — nothing reaches players until the DM approves.
+        assist = scene.dm_mode == "assist"
+
         try:
-            _status(campaign.id, scene_id, "The DM considers the scene…")
+            _status(campaign.id, scene_id, "The DM considers the scene…", dm_only=assist)
             catalog = render_tool_catalog(registry.openai_schemas()) if prompted else None
             messages = await build_messages(db, campaign, scene, catalog)
             tools = registry.openai_schemas() if use_native else None
 
-            # Assist mode: narration is drafted privately for the DM to approve.
-            assist = scene.dm_mode == "assist"
             refusal_retried = False
 
             for round_no in range(MAX_TOOL_ROUNDS):
@@ -301,6 +304,18 @@ async def run_turn(scene_id: str) -> None:
                             visibility="dm",
                         )
                 if started:
+                    if hold_narration and not assist:
+                        # Copilot leak-hold: players already watched the deltas
+                        # stream in — retract their bubble (message=None) so the
+                        # held text doesn't stay pinned on their screens.
+                        hub.broadcast(
+                            campaign.id,
+                            events.make_event(
+                                events.STREAM_END, campaign.id,
+                                {"stream_id": stream_id, "message": None}, scene_id,
+                            ),
+                            scene_id=scene_id,
+                        )
                     hub.broadcast(
                         campaign.id,
                         events.make_event(
@@ -376,7 +391,7 @@ async def run_turn(scene_id: str) -> None:
                     messages.append({"role": "assistant", "content": buffer})
 
                 for call in calls:
-                    _status(campaign.id, scene_id, f"🎲 {call.name}…")
+                    _status(campaign.id, scene_id, f"🎲 {call.name}…", dm_only=assist)
 
                     # Copilot: gated tools wait for DM approval. Assist: every
                     # mutating tool waits. Reads and dice always run.
@@ -418,12 +433,14 @@ async def run_turn(scene_id: str) -> None:
                             scene_id,
                         ),
                         scene_id=scene_id,
+                        dm_only=assist,  # assist drafts stay private end to end
                     )
                     if result.public_note:
                         await create_message(
                             db, scene, author_type="tool", kind="tool_result",
                             content=result.public_note,
                             payload={"tool": call.name, "ok": result.ok},
+                            visibility="dm" if assist else "all",
                         )
 
                     if use_native:
@@ -442,7 +459,7 @@ async def run_turn(scene_id: str) -> None:
                                 + json.dumps(result.for_llm()),
                             }
                         )
-                _status(campaign.id, scene_id, "The DM weaves the outcome…")
+                _status(campaign.id, scene_id, "The DM weaves the outcome…", dm_only=assist)
             else:
                 # Round cap hit: force one final text-only reply.
                 messages.append(

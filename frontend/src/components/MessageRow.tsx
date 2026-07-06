@@ -11,10 +11,14 @@ const AUTHOR_ICON: Record<Message['author_type'], string> = {
 
 export function MessageRow({
   message,
+  speaker,
   streaming = false,
   onRespondRoll,
 }: {
   message: Message
+  /** Who's talking — the character's name (or "DM") shown above the text so
+   *  players can tell each other apart at a multiplayer table. */
+  speaker?: string
   streaming?: boolean
   onRespondRoll?: (messageId: string) => void
 }) {
@@ -44,6 +48,7 @@ export function MessageRow({
         {AUTHOR_ICON[message.author_type]}
       </span>
       <div className="msg-body">
+        {speaker && <span className="msg-speaker">{speaker}</span>}
         {message.visibility !== 'all' && <span className="badge">DM only</span>}
         {message.kind === 'ooc' && <span className="badge">OOC</span>}
         <span

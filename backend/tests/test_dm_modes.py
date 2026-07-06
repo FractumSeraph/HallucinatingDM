@@ -315,3 +315,68 @@ async def test_chargen_suggest_with_mock(app_client):
     resp = await app_client.post(f"/api/v1/campaigns/{campaign['id']}/characters", json=build)
     assert resp.status_code == 200
     set_provider(None)
+
+
+async def test_player_cannot_roll_as_anothers_character(app_client):
+    """Dice rolls attribute to a character — only its owner (or the DM) may
+    roll as it, otherwise a player could fake another PC's rolls in the log."""
+    campaign, scene, character = await setup_game(app_client, dm_mode="human")
+
+    await app_client.post(
+        "/api/v1/auth/register",
+        json={"email": "rogue@example.com", "password": "longenough", "display_name": "R"},
+    )
+    await app_client.post(
+        "/api/v1/campaigns/join", json={"invite_code": campaign["invite_code"]}
+    )
+
+    # The second player tries to roll as the DM-owned first character.
+    resp = await app_client.post(
+        f"/api/v1/scenes/{scene['id']}/roll",
+        json={"expression": "1d20", "purpose": "death_save", "character_id": character["id"]},
+    )
+    assert resp.status_code == 403
+
+    # Rolling as themselves (no character) still works.
+    resp = await app_client.post(
+        f"/api/v1/scenes/{scene['id']}/roll", json={"expression": "1d20", "purpose": "check"}
+    )
+    assert resp.status_code == 200
+
+
+async def test_assist_tool_chips_stay_dm_only(app_client):
+    """In assist mode the WHOLE draft is private — tool chips (like the
+    'waiting on approval' note for a held mutation) must not reach players."""
+    campaign, scene, character = await setup_game(app_client, dm_mode="assist")
+    make_mock(
+        [
+            [
+                ToolCall(
+                    id="h1", name="update_hp",
+                    arguments={"target": character["name"], "delta": -3, "reason": "trap"},
+                ),
+                Done(),
+            ],
+            [TextDelta("The lock resists your pick."), Done()],
+        ]
+    )
+    from app.ai.dm_agent import run_turn
+
+    await run_turn(scene["id"])
+
+    # The DM sees the tool chip…
+    msgs = (await app_client.get(f"/api/v1/scenes/{scene['id']}/messages")).json()
+    assert any(m["kind"] == "tool_result" for m in msgs)
+
+    # …players do not.
+    await app_client.post(
+        "/api/v1/auth/register",
+        json={"email": "p2@example.com", "password": "longenough", "display_name": "P2"},
+    )
+    await app_client.post(
+        "/api/v1/campaigns/join", json={"invite_code": campaign["invite_code"]}
+    )
+    msgs = (await app_client.get(f"/api/v1/scenes/{scene['id']}/messages")).json()
+    assert not any(m["kind"] == "tool_result" for m in msgs)
+    assert not any("lock resists" in m["content"] for m in msgs)
+    set_provider(None)

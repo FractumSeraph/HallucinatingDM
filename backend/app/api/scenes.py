@@ -374,6 +374,8 @@ async def resolve_turn(scene_id: str, db: DbSession, user: CurrentUser) -> dict[
     if not scene:
         raise not_found("Scene")
     await require_campaign_dm(scene.campaign_id, db, user)
+    if scene.dm_mode == "human":
+        raise bad_request("This scene is run by the human DM — there's no AI turn to resolve")
 
     from app.ai.trigger import resolve_now
 
@@ -462,8 +464,11 @@ async def roll_dice(
     roller_name = user.display_name
     if body.character_id:
         character = await db.get(Character, body.character_id)
-        if character and character.campaign_id == scene.campaign_id:
-            roller_name = character.name
+        if not character or character.campaign_id != scene.campaign_id:
+            raise bad_request("Unknown character")
+        if character.user_id != user.id and member.role != "dm":
+            raise forbidden("That's not your character")
+        roller_name = character.name
 
     try:
         msg, _ = await create_roll_message(

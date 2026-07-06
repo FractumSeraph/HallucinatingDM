@@ -117,6 +117,44 @@ async def test_dm_resolve_now_forces_the_round(app_client, monkeypatch):
     assert fired == [sid]
 
 
+async def test_combat_bypasses_gathering(app_client, monkeypatch):
+    """During combat, initiative decides who acts — the acting player's message
+    resolves immediately instead of waiting on the rest of the party."""
+    trig._declared.clear()
+    fired: list[str] = []
+    monkeypatch.setattr("app.ai.dm_agent.trigger_turn", lambda sid: fired.append(sid))
+
+    _campaign, sid, ids = await _scene_with_party(app_client, 3)
+    from app.db import get_sessionmaker
+    from app.models import Scene
+    from app.services import combat as combat_service
+
+    async with get_sessionmaker()() as db:
+        scene = await db.get(Scene, sid)
+        await combat_service.start_encounter(db, scene, ["PC0", "wolf"])
+        fired.clear()
+        await trig.maybe_trigger_ai_turn(scene, _msg(sid, ids[0]), db)
+    assert fired == [sid]  # no waiting on PC1/PC2 — initiative rules combat
+
+
+async def test_unconscious_character_does_not_block_the_round(app_client, monkeypatch):
+    trig._declared.clear()
+    fired: list[str] = []
+    monkeypatch.setattr("app.ai.dm_agent.trigger_turn", lambda sid: fired.append(sid))
+
+    _campaign, sid, ids = await _scene_with_party(app_client, 2)
+    from app.db import get_sessionmaker
+    from app.models import Character, Scene
+
+    async with get_sessionmaker()() as db:
+        downed = await db.get(Character, ids[1])
+        downed.hp_current = 0  # dying — they cannot declare an action
+        await db.commit()
+        scene = await db.get(Scene, sid)
+        await trig.maybe_trigger_ai_turn(scene, _msg(sid, ids[0]), db)
+    assert fired == [sid]  # only conscious PC0 was expected
+
+
 async def test_dm_message_resolves_without_waiting(app_client, monkeypatch):
     trig._declared.clear()
     fired: list[str] = []
@@ -131,3 +169,27 @@ async def test_dm_message_resolves_without_waiting(app_client, monkeypatch):
         # DM speaking is direction, not a player declaration — resolve at once.
         await trig.maybe_trigger_ai_turn(scene, _msg(sid, None, author_type="dm"), db)
     assert fired == [sid]
+
+
+async def test_characterless_chat_does_not_cut_the_round_short(app_client, monkeypatch):
+    """A player with no character can't act — their chat is table talk while a
+    party is mid-round, not a trigger that resolves everyone else's turn."""
+    trig._declared.clear()
+    fired: list[str] = []
+    monkeypatch.setattr("app.ai.dm_agent.trigger_turn", lambda sid: fired.append(sid))
+
+    _campaign, sid, ids = await _scene_with_party(app_client, 2)
+    from app.db import get_sessionmaker
+    from app.models import Scene
+
+    async with get_sessionmaker()() as db:
+        scene = await db.get(Scene, sid)
+        # PC0 declares; the round now waits on PC1…
+        await trig.maybe_trigger_ai_turn(scene, _msg(sid, ids[0]), db)
+        assert fired == []
+        # …and a characterless spectator message must NOT resolve it.
+        await trig.maybe_trigger_ai_turn(scene, _msg(sid, None), db)
+        assert fired == []
+        # PC1 declares → now it resolves.
+        await trig.maybe_trigger_ai_turn(scene, _msg(sid, ids[1]), db)
+        assert fired == [sid]

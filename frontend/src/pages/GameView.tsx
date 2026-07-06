@@ -22,6 +22,7 @@ export function GameView() {
   const qc = useQueryClient()
   const [streams, setStreams] = useState<Record<string, StreamBuffer>>({})
   const [aiStatus, setAiStatus] = useState('')
+  const [actionError, setActionError] = useState('')
   const [showHelp, setShowHelp] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   useLiveCache(cid)
@@ -95,9 +96,13 @@ export function GameView() {
         case EVT.AI_STATUS:
           setAiStatus((e.payload as { status: string }).status ?? '')
           break
-        case EVT.SCENE_UPDATED:
-          qc.setQueryData(['scenes', sid], e.payload as unknown as Scene)
+        case EVT.SCENE_UPDATED: {
+          // Guard on the payload's own id — an update to a sibling scene must
+          // never overwrite the scene we're viewing.
+          const updated = e.payload as unknown as Scene
+          if (updated.id === sid) qc.setQueryData(['scenes', sid], updated)
           break
+        }
         default:
           break
       }
@@ -136,6 +141,27 @@ export function GameView() {
     (c) => c.user_id === me?.id && c.status === 'active',
   )?.id
 
+  const characterNames = useMemo(
+    () => Object.fromEntries((allCharacters ?? []).map((c) => [c.id, c.name])),
+    [allCharacters],
+  )
+  // Name above each line so a table full of players can tell who's talking.
+  function speakerFor(m: Message): string | undefined {
+    if (m.author_type === 'dm') return m.character_id ? characterNames[m.character_id] : 'DM'
+    if (m.author_type === 'player')
+      return m.character_id ? characterNames[m.character_id] : undefined
+    return undefined
+  }
+
+  function act(path: string) {
+    setActionError('')
+    api
+      .post(path)
+      .catch((err) =>
+        setActionError(err instanceof ApiError ? err.message : 'That action failed — try again.'),
+      )
+  }
+
   return (
     <div className="game-view">
       <header className="game-header">
@@ -151,7 +177,7 @@ export function GameView() {
         {scene && scene.dm_mode !== 'human' && (
           <button
             title="Ask the AI DM to continue"
-            onClick={() => api.post(`/scenes/${sid}/nudge`).catch(() => {})}
+            onClick={() => act(`/scenes/${sid}/nudge`)}
           >
             ✨<span className="hide-sm"> Continue</span>
           </button>
@@ -159,7 +185,7 @@ export function GameView() {
         {isDm && scene && scene.dm_mode !== 'human' && (
           <button
             title="Resolve the round now, skipping anyone who hasn't acted"
-            onClick={() => api.post(`/scenes/${sid}/resolve-turn`).catch(() => {})}
+            onClick={() => act(`/scenes/${sid}/resolve-turn`)}
           >
             ▶<span className="hide-sm"> Resolve</span>
           </button>
@@ -170,7 +196,7 @@ export function GameView() {
             title="Strike the last AI turn and reverse its effects"
             onClick={() => {
               if (confirm('Undo the last AI turn? Its messages are struck and state changes reversed.'))
-                api.post(`/scenes/${sid}/retcon-last-turn`).catch(() => {})
+                act(`/scenes/${sid}/retcon-last-turn`)
             }}
           >
             ⎌<span className="hide-sm"> Retcon</span>
@@ -205,9 +231,15 @@ export function GameView() {
               <MessageRow
                 key={m.id}
                 message={m}
-                onRespondRoll={(messageId) =>
-                  api.post(`/scenes/${sid}/respond-roll`, { message_id: messageId }).catch(() => {})
-                }
+                speaker={speakerFor(m)}
+                onRespondRoll={(messageId) => {
+                  setActionError('')
+                  api
+                    .post(`/scenes/${sid}/respond-roll`, { message_id: messageId })
+                    .catch((err) =>
+                      setActionError(err instanceof ApiError ? err.message : 'Roll failed'),
+                    )
+                }}
               />
             ))}
             {Object.entries(streams).map(([id, s]) => (
@@ -231,8 +263,9 @@ export function GameView() {
               />
             ))}
             {aiStatus && <div className="ai-status muted">{aiStatus}</div>}
+            {actionError && <div className="ai-status error-text">{actionError}</div>}
           </div>
-          <Composer sceneId={sid} isDm={isDm} characterId={myCharacterId} />
+          <Composer sceneId={sid} isDm={isDm} characterId={myCharacterId} campaignId={cid} />
         </div>
         <GameRail campaignId={cid} sceneId={sid} isDm={isDm} />
       </div>
@@ -256,13 +289,17 @@ function Composer({
   sceneId,
   isDm,
   characterId,
+  campaignId,
 }: {
   sceneId: string
   isDm: boolean
   characterId?: string
+  campaignId?: string
 }) {
   const [text, setText] = useState('')
   const [ooc, setOoc] = useState(false)
+  // A player with no active character can't act in-fiction — only OOC chat.
+  const needsCharacter = !isDm && !characterId && !ooc
   const [showDice, setShowDice] = useState(false)
   const [ideas, setIdeas] = useState<string[]>([])
   const [ideasBusy, setIdeasBusy] = useState(false)
@@ -329,6 +366,17 @@ function Composer({
   return (
     <form className="composer" onSubmit={submit}>
       {error && <div className="error-text">{error}</div>}
+      {needsCharacter && (
+        <div className="muted" style={{ fontSize: '0.82rem' }}>
+          You need a character to act.{' '}
+          {campaignId ? (
+            <Link to={`/campaigns/${campaignId}/characters/new`}>Create one</Link>
+          ) : (
+            'Create one from the campaign page'
+          )}{' '}
+          — or tick OOC to chat at the table.
+        </div>
+      )}
       {ideas.length > 0 && (
         <div className="idea-chips">
           {ideas.map((s) => (
@@ -383,7 +431,7 @@ function Composer({
           className="grow"
         />
         <div className="col" style={{ gap: '0.35rem' }}>
-          <button className="btn-primary" disabled={busy || !text.trim()}>
+          <button className="btn-primary" disabled={busy || !text.trim() || needsCharacter}>
             Send
           </button>
           <div className="row" style={{ gap: '0.4rem' }}>
@@ -411,7 +459,15 @@ function Composer({
                 type="button"
                 className="dice-toggle"
                 title="Hold this round — let the turn resolve without you"
-                onClick={() => api.post(`/scenes/${sceneId}/skip-turn`).catch(() => {})}
+                disabled={!characterId}
+                onClick={() => {
+                  setError('')
+                  api
+                    .post(`/scenes/${sceneId}/skip-turn`)
+                    .catch((err) =>
+                      setError(err instanceof ApiError ? err.message : 'Hold failed'),
+                    )
+                }}
               >
                 ⏭
               </button>
