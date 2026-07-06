@@ -46,6 +46,10 @@ async def test_prompt_carries_behavioral_guidance(app_client):
     assert "NEVER narrate a success on a failed check" in system
     # Never voice or act for a player character.
     assert "Do NOT invent their dialogue" in system
+    # A PC's past belongs to the player — no invented backstory/heritage hooks.
+    assert "Their PAST is theirs too" in system
+    assert "Never invent a PC's history" in system
+    assert "the NPC is genuinely mistaken or lying" in system
     # Attacks roll to-hit vs AC before damage.
     assert "Resolve attacks honestly" in system
     assert 'roll_dice with kind="attack"' in system
@@ -156,3 +160,35 @@ def test_refusal_detector_spares_in_fiction_dialogue():
     assert not looks_like_refusal('"I can\'t sell you that," the shopkeep says flatly.')
     assert not looks_like_refusal("You can't quite reach the ledge — roll Athletics.")
     assert not looks_like_refusal("The bandit snarls: 'You won't leave here alive.'")
+
+
+async def test_backstory_reaches_the_prompt(app_client):
+    """The wizard promises the backstory is 'hooks for the AI DM to weave in' —
+    it must actually be in the party card, or the model invents a past."""
+    campaign, scene, _character = await setup_game(app_client)
+    resp = await app_client.post(
+        f"/api/v1/campaigns/{campaign['id']}/characters",
+        json={
+            "name": "Kael", "race": "elf", "subrace": "High Elf", "klass": "warlock",
+            "background": "sage", "method": "standard",
+            "base_scores": {"str": 8, "dex": 13, "con": 14, "int": 12, "wis": 10, "cha": 15},
+            "skill_choices": ["arcana", "investigation"],
+            "cantrips": ["Eldritch Blast", "Mage Hand"],
+            "spells": ["Charm Person", "Hellish Rebuke"],
+            "personality": "Wry and cautious.",
+            "backstory": "An orphan scribe who has never left the city and knows no patrons.",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    await app_client.post(
+        f"/api/v1/scenes/{scene['id']}/messages",
+        json={"content": "Kael sips tea.", "character_id": None, "kind": "ooc"},
+    )
+
+    mock = make_mock([[TextDelta("The tea is warm."), Done()]])
+    from app.ai.dm_agent import run_turn
+
+    await run_turn(scene["id"])
+    system = mock.calls[0].messages[0]["content"]
+    assert "Backstory: An orphan scribe who has never left the city" in system
+    set_provider(None)
