@@ -8,6 +8,13 @@ import { useCharacters } from '../components/CharacterList'
 
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const
 
+// Standard 5E conditions for the sheet's quick add/remove editor.
+const CONDITIONS = [
+  'blinded', 'charmed', 'deafened', 'frightened', 'grappled', 'incapacitated',
+  'invisible', 'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained',
+  'stunned', 'unconscious', 'exhaustion',
+]
+
 function mod(score: number): string {
   const m = Math.floor((score - 10) / 2)
   return m >= 0 ? `+${m}` : `${m}`
@@ -28,6 +35,19 @@ export function CharacterSheet() {
     queryKey: ['characters', charId, 'inventory'],
     queryFn: () => api.get(`/characters/${charId}/inventory`),
   })
+
+  async function slotOp(level: string, op: 'spend' | 'restore') {
+    setError('')
+    try {
+      const updated = await api.post<Character>(`/characters/${charId}/spell-slot`, {
+        level,
+        op,
+      })
+      qc.setQueryData(['characters', charId], updated)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Slot update failed')
+    }
+  }
 
   async function patch(body: Record<string, unknown>) {
     setError('')
@@ -92,15 +112,40 @@ export function CharacterSheet() {
             +{2 + Math.floor((c.level - 1) / 4)}
           </p>
           <LevelUpButton c={c} charId={charId} cid={cid} />
-          {c.conditions_json.length > 0 && (
-            <p>
-              {c.conditions_json.map((cond) => (
-                <span key={cond} className="badge badge-fail" style={{ marginRight: 4 }}>
-                  {cond}
-                </span>
+          <div className="row" style={{ flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.4rem' }}>
+            {c.conditions_json.map((cond) => (
+              <span key={cond} className="badge badge-fail">
+                {cond}{' '}
+                <button
+                  className="hp-chip"
+                  title={`Remove ${cond}`}
+                  aria-label={`Remove ${cond}`}
+                  onClick={() =>
+                    patch({ conditions: c.conditions_json.filter((x) => x !== cond) })
+                  }
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+            <select
+              title="Add a condition"
+              aria-label="Add a condition"
+              value=""
+              style={{ width: 'auto', padding: '0.15rem 0.3rem', fontSize: '0.78rem' }}
+              onChange={(e) => {
+                if (e.target.value)
+                  patch({ conditions: [...c.conditions_json, e.target.value] })
+              }}
+            >
+              <option value="">+ condition</option>
+              {CONDITIONS.filter((x) => !c.conditions_json.includes(x)).map((x) => (
+                <option key={x} value={x}>
+                  {x}
+                </option>
               ))}
-            </p>
-          )}
+            </select>
+          </div>
           <h4>Currency</h4>
           <div className="row">
             {(['pp', 'gp', 'sp', 'cp'] as const).map((coin) => (
@@ -139,8 +184,22 @@ export function CharacterSheet() {
               <h4 title="How many spells of each level you can still cast before resting">Spell slots</h4>
               <div className="row" style={{ flexWrap: 'wrap' }}>
                 {Object.entries(c.spell_slots_json).map(([lvl, slot]) => (
-                  <span key={lvl} className="badge">
+                  <span key={lvl} className="badge row" style={{ gap: '0.25rem' }}>
                     L{lvl}: {slot.max - slot.used}/{slot.max}
+                    <button
+                      className="hp-chip"
+                      title={`Spend a level-${lvl} slot (you cast a spell)`}
+                      onClick={() => slotOp(lvl, 'spend')}
+                    >
+                      −
+                    </button>
+                    <button
+                      className="hp-chip"
+                      title={`Restore a level-${lvl} slot`}
+                      onClick={() => slotOp(lvl, 'restore')}
+                    >
+                      +
+                    </button>
                   </span>
                 ))}
               </div>

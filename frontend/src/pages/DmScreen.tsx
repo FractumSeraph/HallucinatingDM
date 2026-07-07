@@ -53,6 +53,10 @@ export function DmScreen() {
           <AwardPanel campaignId={cid} />
         </section>
         <section className="card">
+          <h3>Story so far (AI memory)</h3>
+          <SummaryEditor campaignId={cid} />
+        </section>
+        <section className="card">
           <h3>Model &amp; usage</h3>
           <CampaignLlmPanel campaignId={cid} />
         </section>
@@ -384,6 +388,45 @@ function CampaignLlmPanel({ campaignId }: { campaignId: string }) {
           Save
         </button>
         {status && <span className="muted">{status}</span>}
+      </div>
+    </div>
+  )
+}
+
+function SummaryEditor({ campaignId }: { campaignId: string }) {
+  const qc = useQueryClient()
+  const { data } = useQuery<{ campaign_summary: string }>({
+    queryKey: ['campaigns', campaignId, 'recaps'],
+    queryFn: () => api.get(`/campaigns/${campaignId}/recaps`),
+  })
+  const [draft, setDraft] = useState<string | null>(null)
+  const [status, setStatus] = useState('')
+  const value = draft ?? data?.campaign_summary ?? ''
+
+  async function save() {
+    setStatus('')
+    try {
+      await api.patch(`/campaigns/${campaignId}`, { summary: value })
+      setStatus('Saved — the AI reads this on every turn.')
+      setDraft(null)
+      await qc.invalidateQueries({ queryKey: ['campaigns', campaignId, 'recaps'] })
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : 'Save failed')
+    }
+  }
+
+  return (
+    <div className="col" style={{ gap: '0.4rem' }}>
+      <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
+        The campaign's rolling summary — what the AI "remembers". Edit it to fix
+        wrong or missing memories; it feeds every future prompt.
+      </p>
+      <textarea rows={6} value={value} onChange={(e) => setDraft(e.target.value)} />
+      <div className="row">
+        <button className="btn-primary" onClick={save} disabled={draft === null}>
+          Save
+        </button>
+        {status && <span className="muted" style={{ fontSize: '0.8rem' }}>{status}</span>}
       </div>
     </div>
   )

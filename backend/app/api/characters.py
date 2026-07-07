@@ -187,6 +187,37 @@ async def patch_character(
     return character_out(character)
 
 
+class SlotRequest(BaseModel):
+    level: str = Field(min_length=1, max_length=2)
+    op: str = Field(default="spend", pattern="^(spend|restore)$")
+
+
+@router.post("/characters/{character_id}/spell-slot")
+async def spend_spell_slot(
+    character_id: str, body: SlotRequest, db: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    """Track a cast by hand (human-DM tables): spend or restore one slot of a
+    level. Owner or DM."""
+    character, role = await _get_character(character_id, db, user)
+    _require_owner_or_dm(character, user.id, role)
+
+    slots = {k: dict(v) for k, v in character.spell_slots_json.items()}
+    slot = slots.get(body.level)
+    if not slot:
+        raise bad_request(f"No level-{body.level} slots on this sheet")
+    if body.op == "spend":
+        if slot["used"] >= slot["max"]:
+            raise bad_request(f"No level-{body.level} slots remaining")
+        slot["used"] += 1
+    else:
+        slot["used"] = max(0, slot["used"] - 1)
+    slots[body.level] = slot
+    character.spell_slots_json = slots
+    await db.commit()
+    broadcast_character(character)
+    return character_out(character)
+
+
 @router.delete("/characters/{character_id}")
 async def delete_character(
     character_id: str, db: DbSession, user: CurrentUser
