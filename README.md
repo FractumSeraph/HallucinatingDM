@@ -64,6 +64,11 @@ The common complaints about hosted AI game masters, and how this design answers 
   the DM sees numbers.
 - **Character sheets & inventory** — live HP bars, conditions, currency, spell slots,
   XP with level-up flow; every change broadcast instantly over WebSockets.
+- **Beginner friendly** — a how-to-play primer opens automatically on a player's
+  first scene, every rules term has a plain-words tooltip, and a **Beginner table**
+  campaign setting makes the AI DM name each check, explain rules as they come up,
+  and always offer concrete options. New players can describe a hero in plain words
+  and get a complete legal character sheet.
 
 ## Setup
 

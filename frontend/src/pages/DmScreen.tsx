@@ -525,7 +525,14 @@ function WorldEventFeed({ campaignId }: { campaignId: string }) {
   return (
     <ul className="plain-list" style={{ fontSize: '0.85rem' }}>
       {events.map((e) => (
-        <li key={e.id}>• {e.description}</li>
+        <li key={e.id}>
+          • {e.description}{' '}
+          <span className="muted" style={{ fontSize: '0.72rem' }}>
+            {new Date(e.created_at).toLocaleString([], {
+              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+            })}
+          </span>
+        </li>
       ))}
     </ul>
   )

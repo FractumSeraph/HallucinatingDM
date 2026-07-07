@@ -116,13 +116,19 @@ async def class_spells(
 
     slug = klass.lower().replace(" ", "-")
     counts = CASTER_SLOTS_L1.get(slug)
-    options = await class_spell_options(db, klass) if counts else {"cantrips": [], "level1": []}
+    options = (
+        await class_spell_options(db, klass)
+        if counts
+        else {"cantrips": [], "level1": [], "descriptions": {}}
+    )
     return {
         "is_caster": counts is not None,
         "cantrips_known": counts[0] if counts else 0,
         "spells_known": counts[1] if counts else 0,
         "cantrips": options["cantrips"],
         "level1": options["level1"],
+        # Short blurbs so pickers aren't bare names ("Fire Bolt: hurl a mote…").
+        "spell_descriptions": options["descriptions"],
         # So the wizard can show the player the gear they'll start with.
         "starting_kit": kit_for(klass),
     }
