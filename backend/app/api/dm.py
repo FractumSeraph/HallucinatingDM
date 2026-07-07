@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.deps import CurrentUser, DbSession, require_campaign_dm, require_campaign_member
 from app.api.errors import bad_request, not_found
@@ -14,6 +14,7 @@ from app.models import (
     Campaign,
     Character,
     Combatant,
+    CombatEncounter,
     InventoryEntry,
     Item,
     Message,
@@ -225,6 +226,17 @@ async def _apply_inverse_patch(db, patch: dict[str, Any]) -> None:
                 for field_name, value in values.items():
                     if hasattr(row, field_name):
                         setattr(row, field_name, value)
+    elif kind == "encounter" and row_id:
+        # Un-start a fight the retconned turn created: drop its combatants
+        # then the encounter itself.
+        row = await db.get(CombatEncounter, row_id)
+        if row and values.get("_created"):
+            # Core deletes execute immediately in order — child rows first.
+            # (ORM delete ordering isn't guaranteed without relationships.)
+            from sqlalchemy import delete as sa_delete
+
+            await db.execute(sa_delete(Combatant).where(Combatant.encounter_id == row.id))
+            await db.execute(sa_delete(CombatEncounter).where(CombatEncounter.id == row.id))
     elif kind == "combatant" and row_id:
         row = await db.get(Combatant, row_id)
         if row:
@@ -240,7 +252,7 @@ async def _apply_inverse_patch(db, patch: dict[str, Any]) -> None:
                 await db.execute(
                     select(Item).where(
                         Item.campaign_id == character.campaign_id,
-                        Item.name.ilike(item_name),
+                        func.lower(Item.name) == str(item_name).lower(),
                     )
                 )
             ).scalars().first()
@@ -324,6 +336,11 @@ async def retcon_last_turn(
 
     turn.status = "reverted"
     await db.commit()
+
+    # Reverted patches may have changed (or deleted) combat — refresh clients.
+    from app.services.combat import broadcast_combat
+
+    await broadcast_combat(db, scene)
 
     for message_id in struck_ids:
         hub.broadcast(

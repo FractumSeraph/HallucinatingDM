@@ -74,7 +74,15 @@ function ApprovalQueue({ campaignId }: { campaignId: string }) {
   })
 
   async function act(id: string, action: 'approve' | 'reject') {
-    await api.post(`/approvals/${id}/${action}`, action === 'reject' ? { note: notes[id] ?? '' } : {})
+    try {
+      await api.post(
+        `/approvals/${id}/${action}`,
+        action === 'reject' ? { note: notes[id] ?? '' } : {},
+      )
+    } catch (e) {
+      alert(e instanceof Error ? e.message : `Failed to ${action} — try again.`)
+      return
+    }
     await qc.invalidateQueries({ queryKey: ['campaigns', campaignId, 'approvals'] })
   }
 
@@ -129,7 +137,11 @@ function SceneModePanel({ campaignId }: { campaignId: string }) {
   const qc = useQueryClient()
 
   async function setMode(scene: Scene, dmMode: string) {
-    await api.patch(`/scenes/${scene.id}`, { dm_mode: dmMode })
+    try {
+      await api.patch(`/scenes/${scene.id}`, { dm_mode: dmMode })
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to change mode')
+    }
     await qc.invalidateQueries({ queryKey: ['campaigns', campaignId, 'scenes'] })
   }
 
@@ -220,11 +232,16 @@ function ScenePrepEditor({
   const locVal = loc ?? prep?.location_id ?? ''
 
   async function save() {
-    await api.patch(`/scenes/${sceneId}`, {
-      dm_notes: notesVal,
-      time_note: timeVal,
-      location_id: locVal, // "" clears
-    })
+    try {
+      await api.patch(`/scenes/${sceneId}`, {
+        dm_notes: notesVal,
+        time_note: timeVal,
+        location_id: locVal, // "" clears
+      })
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Saving prep failed — try again.')
+      return
+    }
     await qc.invalidateQueries({ queryKey: ['scenes', sceneId, 'prep'] })
     onSaved()
   }
@@ -379,11 +396,15 @@ function ContentLevelPanel({ campaignId }: { campaignId: string }) {
   const qc = useQueryClient()
   const current = (campaign?.settings_json.content_level as string | undefined) ?? 'standard'
 
-  async function save(level: string) {
+  async function save(patch: Record<string, unknown>) {
     if (!campaign) return // settings not loaded yet — don't clobber them
-    await api.patch(`/campaigns/${campaignId}`, {
-      settings: { ...campaign.settings_json, content_level: level },
-    })
+    try {
+      await api.patch(`/campaigns/${campaignId}`, {
+        settings: { ...campaign.settings_json, ...patch },
+      })
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Saving failed — try again.')
+    }
     await qc.invalidateQueries({ queryKey: ['campaigns', campaignId] })
   }
 
@@ -394,6 +415,21 @@ function ContentLevelPanel({ campaignId }: { campaignId: string }) {
         prompt — it sets the tone, and helps stop overcautious models refusing to
         narrate combat.
       </p>
+      <label className="row" style={{ alignItems: 'baseline', justifyContent: 'flex-start' }}>
+        <input
+          type="checkbox"
+          style={{ width: 'auto' }}
+          checked={Boolean(campaign?.settings_json.beginner_mode)}
+          onChange={(e) => save({ beginner_mode: e.target.checked })}
+        />
+        <span>
+          <strong>Beginner table</strong>{' '}
+          <span className="muted">
+            — everyone's new to D&D: the DM explains each rule in plain words as it
+            comes up and always offers ideas
+          </span>
+        </span>
+      </label>
       {CONTENT_LEVELS.map((level) => (
         <label
           key={level.value}
@@ -405,7 +441,7 @@ function ContentLevelPanel({ campaignId }: { campaignId: string }) {
             name="content-level"
             style={{ width: 'auto' }}
             checked={current === level.value}
-            onChange={() => save(level.value)}
+            onChange={() => save({ content_level: level.value })}
           />
           <span>
             <strong>{level.label}</strong>{' '}
@@ -425,9 +461,13 @@ function PinnedFactsPanel({ campaignId }: { campaignId: string }) {
 
   async function save(next: string[]) {
     if (!campaign) return // settings not loaded yet — don't clobber them
-    await api.patch(`/campaigns/${campaignId}`, {
-      settings: { ...campaign.settings_json, pinned_facts: next },
-    })
+    try {
+      await api.patch(`/campaigns/${campaignId}`, {
+        settings: { ...campaign.settings_json, pinned_facts: next },
+      })
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Saving failed — try again.')
+    }
     await qc.invalidateQueries({ queryKey: ['campaigns', campaignId] })
   }
 

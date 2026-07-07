@@ -157,6 +157,20 @@ async def roll_dice(ctx: ToolContext, args: RollDiceArgs) -> ToolResult:
             detail["outcome"] = "critical miss"
 
     if args.kind == "death_save" and character is not None:
+        # A death save can kill or revive — record the prior state so retcon
+        # can undo it like every other mutation.
+        ctx.inverse_patches.append(
+            {
+                "kind": "character",
+                "id": character.id,
+                "patch": {
+                    "hp_current": character.hp_current,
+                    "conditions_json": list(character.conditions_json),
+                    "death_saves_json": dict(character.death_saves_json or {}),
+                    "status": character.status,
+                },
+            }
+        )
         saves = dict(character.death_saves_json or {"successes": 0, "failures": 0})
         if face == 20:
             character.hp_current = 1

@@ -71,6 +71,7 @@ function CreateCampaignModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [tone, setTone] = useState('heroic fantasy')
+  const [beginner, setBeginner] = useState(false)
   const [error, setError] = useState('')
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -81,7 +82,7 @@ function CreateCampaignModal({ onClose }: { onClose: () => void }) {
       const c = await api.post<Campaign>('/campaigns', {
         name,
         description,
-        settings: { tone },
+        settings: { tone, beginner_mode: beginner },
       })
       await qc.invalidateQueries({ queryKey: ['campaigns'] })
       navigate(`/campaigns/${c.id}`)
@@ -118,6 +119,18 @@ function CreateCampaignModal({ onClose }: { onClose: () => void }) {
               <option>horror</option>
               <option>swashbuckling adventure</option>
             </select>
+          </label>
+          <label className="row muted" style={{ justifyContent: 'flex-start' }}>
+            <input
+              type="checkbox"
+              style={{ width: 'auto' }}
+              checked={beginner}
+              onChange={(e) => setBeginner(e.target.checked)}
+            />
+            <span>
+              <strong>Beginner table</strong> — we're new to D&D: the DM explains the
+              rules in plain words as we play
+            </span>
           </label>
           {error && <div className="error-text">{error}</div>}
           <div className="row" style={{ justifyContent: 'flex-end' }}>

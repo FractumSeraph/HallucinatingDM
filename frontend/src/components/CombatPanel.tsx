@@ -37,15 +37,24 @@ export function CombatPanel({ sceneId, isDm }: { sceneId: string; isDm: boolean 
   }
 
   const { encounter, combatants } = combat
+  const active = combatants.find((c) => c.id === encounter.active_combatant_id)
   return (
     <div className="combat-panel">
       <h4 style={{ margin: 0 }}>⚔️ Round {encounter.round}</h4>
+      {active && (
+        <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.8rem' }}>
+          ▶ <strong>{active.name}</strong>'s turn
+        </p>
+      )}
       <ul className="plain-list" style={{ marginTop: '0.4rem' }}>
         {combatants.map((c) => (
           <li
             key={c.id}
             className={`combatant-row ${c.id === encounter.active_combatant_id ? 'combatant-active' : ''} ${c.defeated ? 'combatant-down' : ''}`}
           >
+            <span aria-hidden="true" style={{ width: '1em' }}>
+              {c.id === encounter.active_combatant_id ? '▶' : ''}
+            </span>
             <span className="badge">{c.initiative}</span>
             <span className="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {c.name}
@@ -74,19 +83,21 @@ export function CombatPanel({ sceneId, isDm }: { sceneId: string; isDm: boolean 
       {isDm && (
         <div className="row" style={{ marginTop: '0.4rem' }}>
           <button
-            onClick={async () => {
-              await api.post(`/scenes/${sceneId}/combat/next-turn`)
-              refresh()
-            }}
+            onClick={() =>
+              api.post(`/scenes/${sceneId}/combat/next-turn`).then(refresh).catch((e) =>
+                alert(e instanceof Error ? e.message : 'Failed'),
+              )
+            }
           >
             Next turn
           </button>
           <button
             className="btn-danger"
-            onClick={async () => {
-              await api.post(`/scenes/${sceneId}/combat/end`)
-              refresh()
-            }}
+            onClick={() =>
+              api.post(`/scenes/${sceneId}/combat/end`).then(refresh).catch((e) =>
+                alert(e instanceof Error ? e.message : 'Failed'),
+              )
+            }
           >
             End
           </button>

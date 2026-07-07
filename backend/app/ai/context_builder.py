@@ -195,6 +195,16 @@ async def build_messages(
     brief = [f"# Campaign: {campaign.name}"]
     if campaign.description:
         brief.append(campaign.description)
+    if settings.get("beginner_mode"):
+        brief.append(
+            "BEGINNER TABLE: every player here is NEW to D&D. Name the skill or "
+            "save you're invoking and say in one plain phrase what it represents "
+            "('roll Stealth — that's sneaking quietly'). Explain each rule the "
+            "first time it comes up (what AC means, why they roll a d20, what a "
+            "spell slot is) in a half-sentence, never a lecture. After every "
+            "narration, end with 2-3 concrete things they could try. Never "
+            "assume they know a rule, and never make them feel dumb for asking."
+        )
     if settings.get("tone"):
         brief.append(f"Tone: {settings['tone']}")
     brief.append(

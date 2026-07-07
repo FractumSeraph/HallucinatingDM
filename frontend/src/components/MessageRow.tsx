@@ -98,7 +98,10 @@ function RollCard({ message }: { message: Message }) {
           )}
           <span className="roll-total">= {roll.total}</span>
           {roll.dc !== undefined && (
-            <span className={`badge ${outcome === 'success' ? 'badge-success' : 'badge-fail'}`}>
+            <span
+              className={`badge ${outcome === 'success' ? 'badge-success' : 'badge-fail'}`}
+              title={`Needed ${roll.dc} or higher (DC = Difficulty Class, the number to beat)`}
+            >
               DC {roll.dc} · {outcome}
             </span>
           )}

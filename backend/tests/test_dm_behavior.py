@@ -192,3 +192,26 @@ async def test_backstory_reaches_the_prompt(app_client):
     system = mock.calls[0].messages[0]["content"]
     assert "Backstory: An orphan scribe who has never left the city" in system
     set_provider(None)
+
+
+async def test_beginner_mode_reaches_the_prompt(app_client):
+    """A beginner-table campaign coaches: the flag injects explain-as-you-go
+    guidance high in the prompt (the campaign brief, not buried in STYLE)."""
+    campaign, scene, character = await setup_game(app_client)
+    await app_client.patch(
+        f"/api/v1/campaigns/{campaign['id']}",
+        json={"settings": {"beginner_mode": True}},
+    )
+    await app_client.post(
+        f"/api/v1/scenes/{scene['id']}/messages",
+        json={"content": "I look around.", "character_id": character["id"]},
+    )
+
+    mock = make_mock([[TextDelta("The room is quiet."), Done()]])
+    from app.ai.dm_agent import run_turn
+
+    await run_turn(scene["id"])
+    system = mock.calls[0].messages[0]["content"]
+    assert "BEGINNER TABLE" in system
+    assert "Explain each rule the first time it comes up" in system
+    set_provider(None)

@@ -82,6 +82,8 @@ async def apply_hp_change(
                 "hp_temp": character.hp_temp,
                 "conditions_json": list(character.conditions_json),
                 "death_saves_json": dict(character.death_saves_json),
+                # Instant death flips status="dead" — retcon must revive.
+                "status": character.status,
             },
         )
         remaining = delta
