@@ -65,6 +65,25 @@ export function CombatPanel({ sceneId, isDm }: { sceneId: string; isDm: boolean 
                 </span>
               )}
             </span>
+            {isDm && !c.defeated && (
+              <span className="row" style={{ gap: '0.15rem' }}>
+                {[-5, -1, +1].map((delta) => (
+                  <button
+                    key={delta}
+                    className="hp-chip"
+                    title={delta < 0 ? `Deal ${-delta} damage` : `Heal ${delta}`}
+                    onClick={() =>
+                      api
+                        .patch(`/combatants/${c.id}`, { delta })
+                        .then(refresh)
+                        .catch((e) => alert(e instanceof Error ? e.message : 'Failed'))
+                    }
+                  >
+                    {delta > 0 ? `+${delta}` : delta}
+                  </button>
+                ))}
+              </span>
+            )}
             {c.defeated ? (
               <span className="badge badge-fail">down</span>
             ) : c.hp_current !== null && c.hp_max !== null ? (

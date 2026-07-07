@@ -324,6 +324,7 @@ function Composer({
 }) {
   const [text, setText] = useState('')
   const [ooc, setOoc] = useState(false)
+  const [secretRolls, setSecretRolls] = useState(false) // DM: hide rolls from players
   // A player with no active character can't act in-fiction — only OOC chat.
   const needsCharacter = !isDm && !characterId && !ooc
   const [showDice, setShowDice] = useState(false)
@@ -354,6 +355,7 @@ function Composer({
       await api.post(`/scenes/${sceneId}/roll`, {
         expression,
         character_id: characterId ?? null,
+        secret: isDm && secretRolls,
       })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Roll failed')
@@ -371,6 +373,7 @@ function Composer({
         await api.post(`/scenes/${sceneId}/roll`, {
           expression: content.slice(6).trim(),
           character_id: characterId ?? null,
+          secret: isDm && secretRolls,
         })
       } else if (content.startsWith('/whisper ') && isDm) {
         await api.post(`/scenes/${sceneId}/whisper`, { content: content.slice(9) })
@@ -425,6 +428,19 @@ function Composer({
       )}
       {showDice && (
         <div className="dice-bar">
+          {isDm && (
+            <label
+              className="muted ooc-toggle"
+              title="Roll where players can't see — classic DM move"
+            >
+              <input
+                type="checkbox"
+                checked={secretRolls}
+                onChange={(e) => setSecretRolls(e.target.checked)}
+              />
+              🤫 secret
+            </label>
+          )}
           {QUICK_ROLLS.map(([label, expression]) => (
             <button
               key={label}

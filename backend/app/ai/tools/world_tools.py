@@ -372,54 +372,10 @@ class RestArgs(BaseModel):
     mutating=True,
 )
 async def rest(ctx: ToolContext, args: RestArgs) -> ToolResult:
-    characters = list(
-        (
-            await ctx.db.execute(
-                select(Character).where(
-                    Character.campaign_id == ctx.campaign.id, Character.status == "active"
-                )
-            )
-        ).scalars()
-    )
-    report = []
-    for c in characters:
-        ctx.inverse_patches.append(
-            {
-                "kind": "character",
-                "id": c.id,
-                "patch": {
-                    "hp_current": c.hp_current,
-                    "spell_slots_json": {k: dict(v) for k, v in c.spell_slots_json.items()},
-                    "resources_json": {k: dict(v) for k, v in c.resources_json.items()},
-                },
-            }
-        )
-        if args.kind == "long":
-            c.hp_current = c.hp_max
-            c.hp_temp = 0
-            c.spell_slots_json = {
-                lvl: {**slot, "used": 0} for lvl, slot in c.spell_slots_json.items()
-            }
-            resources = {k: dict(v) for k, v in c.resources_json.items()}
-            hd = resources.get("hit_dice")
-            if hd:  # regain half max hit dice (min 1)
-                hd["used"] = max(0, hd["used"] - max(1, hd["max"] // 2))
-                resources["hit_dice"] = hd
-            c.resources_json = resources
-            c.death_saves_json = {"successes": 0, "failures": 0}
-            conditions = set(c.conditions_json)
-            conditions.discard("unconscious")
-            c.conditions_json = sorted(conditions)
-            report.append(f"{c.name}: full HP, slots restored")
-        else:
-            report.append(f"{c.name}: may spend hit dice to heal")
-        from app.services.bookkeeping import broadcast_character
+    from app.services.rest_service import apply_rest
 
-        broadcast_character(ctx.campaign.id, c)
-    await ctx.db.commit()
-    await create_message(
-        ctx.db, ctx.scene, author_type="system", kind="system",
-        content=f"🌙 The party takes a {args.kind} rest.",
+    report = await apply_rest(
+        ctx.db, ctx.campaign, ctx.scene, args.kind, inverse_patches=ctx.inverse_patches
     )
     return ToolResult(ok=True, data={"kind": args.kind, "party": report})
 

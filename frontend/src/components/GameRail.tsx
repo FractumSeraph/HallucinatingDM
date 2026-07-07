@@ -35,6 +35,7 @@ export function GameRail({
         {open && (
           <div className="col">
             <CombatPanel sceneId={sceneId} isDm={isDm} />
+            {isDm && <RestButtons sceneId={sceneId} />}
             <h4 style={{ margin: '0.5rem 0 0' }}>Party</h4>
             {active?.length === 0 && <p className="muted">No active characters.</p>}
             {active?.map((c) => (
@@ -90,5 +91,37 @@ function QuestLog({ campaignId }: { campaignId: string }) {
         </div>
       ))}
     </>
+  )
+}
+
+
+function RestButtons({ sceneId }: { sceneId: string }) {
+  const [busy, setBusy] = useState(false)
+
+  async function rest(kind: 'short' | 'long') {
+    const what =
+      kind === 'long'
+        ? 'Long rest: the whole party heals to full and regains spell slots.'
+        : 'Short rest: the party catches its breath and may spend hit dice.'
+    if (!confirm(`${what} Proceed?`)) return
+    setBusy(true)
+    try {
+      await api.post(`/scenes/${sceneId}/rest`, { kind })
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Rest failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="row" style={{ gap: '0.4rem' }}>
+      <button disabled={busy} title="Catch your breath — spend hit dice" onClick={() => rest('short')}>
+        ⏳ Short rest
+      </button>
+      <button disabled={busy} title="Full night's sleep — HP and slots restored" onClick={() => rest('long')}>
+        🌙 Long rest
+      </button>
+    </div>
   )
 }

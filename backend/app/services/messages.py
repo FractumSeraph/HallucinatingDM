@@ -96,8 +96,10 @@ async def create_roll_message(
     character_id: str | None = None,
     detail: dict[str, Any] | None = None,
     result: dice_service.DiceResult | None = None,
+    visibility: str = "all",
 ) -> tuple[Message, DiceRoll]:
-    """Roll server-side, persist the audited roll, and post it as a message."""
+    """Roll server-side, persist the audited roll, and post it as a message.
+    visibility="dm" makes it a secret DM roll players never see."""
     rolled = result or dice_service.roll(expression)
     detail = detail or {}
 
@@ -119,6 +121,7 @@ async def create_roll_message(
         kind="roll",
         content=label,
         payload=payload,
+        visibility=visibility,
     )
 
     roll_row = DiceRoll(
