@@ -52,6 +52,18 @@ async def next_turn(scene_id: str, db: DbSession, user: CurrentUser) -> dict[str
         raise bad_request(str(e)) from e
 
 
+@router.post("/scenes/{scene_id}/combat/add")
+async def add_to_combat(
+    scene_id: str, body: EncounterCreate, db: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    """Reinforcements arrive: DM adds combatants to the running encounter."""
+    scene = await _dm_scene(scene_id, db, user)
+    try:
+        return await combat_service.add_combatants(db, scene, body.participants)
+    except combat_service.CombatError as e:
+        raise bad_request(str(e)) from e
+
+
 class CombatantHp(BaseModel):
     delta: int = Field(ge=-999, le=999, description="negative = damage, positive = heal")
 

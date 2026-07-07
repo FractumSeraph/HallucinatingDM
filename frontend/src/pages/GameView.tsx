@@ -145,10 +145,16 @@ export function GameView() {
   const { data: me } = useMe()
   const { data: allCharacters } = useCharacters(cid)
   // Speak and roll as your own active character so everyone (including the
-  // AI) sees "Mira", not an anonymous player.
-  const myCharacterId = allCharacters?.find(
+  // AI) sees "Mira", not an anonymous player. Players running more than one
+  // character pick who's talking in the composer.
+  const myCharacters = (allCharacters ?? []).filter(
     (c) => c.user_id === me?.id && c.status === 'active',
-  )?.id
+  )
+  const [speakingAs, setSpeakingAs] = useState<string | undefined>(undefined)
+  const myCharacterId =
+    speakingAs && myCharacters.some((c) => c.id === speakingAs)
+      ? speakingAs
+      : myCharacters[0]?.id
 
   const characterNames = useMemo(
     () => Object.fromEntries((allCharacters ?? []).map((c) => [c.id, c.name])),
@@ -284,7 +290,14 @@ export function GameView() {
             {aiStatus && <div className="ai-status muted">{aiStatus}</div>}
             {actionError && <div className="ai-status error-text">{actionError}</div>}
           </div>
-          <Composer sceneId={sid} isDm={isDm} characterId={myCharacterId} campaignId={cid} />
+          <Composer
+            sceneId={sid}
+            isDm={isDm}
+            characterId={myCharacterId}
+            campaignId={cid}
+            myCharacters={myCharacters.map((c) => ({ id: c.id, name: c.name }))}
+            onSpeakAs={setSpeakingAs}
+          />
         </div>
         <GameRail campaignId={cid} sceneId={sid} isDm={isDm} />
       </div>
@@ -316,11 +329,15 @@ function Composer({
   isDm,
   characterId,
   campaignId,
+  myCharacters = [],
+  onSpeakAs,
 }: {
   sceneId: string
   isDm: boolean
   characterId?: string
   campaignId?: string
+  myCharacters?: { id: string; name: string }[]
+  onSpeakAs?: (id: string) => void
 }) {
   const [text, setText] = useState('')
   const [ooc, setOoc] = useState(false)
@@ -506,7 +523,7 @@ function Composer({
                 onClick={() => {
                   setError('')
                   api
-                    .post(`/scenes/${sceneId}/skip-turn`)
+                    .post(`/scenes/${sceneId}/skip-turn`, { character_id: characterId ?? null })
                     .catch((err) =>
                       setError(err instanceof ApiError ? err.message : 'Hold failed'),
                     )
@@ -514,6 +531,21 @@ function Composer({
               >
                 ⏭
               </button>
+            )}
+            {myCharacters.length > 1 && (
+              <select
+                title="Which of your characters is speaking"
+                aria-label="Speaking as"
+                value={characterId}
+                onChange={(e) => onSpeakAs?.(e.target.value)}
+                style={{ width: 'auto', padding: '0.2rem 0.4rem' }}
+              >
+                {myCharacters.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             )}
             <label className="muted ooc-toggle">
               <input type="checkbox" checked={ooc} onChange={(e) => setOoc(e.target.checked)} />

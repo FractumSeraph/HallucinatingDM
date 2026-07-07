@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../api/client'
 import type { Character, InventoryItem } from '../api/types'
 import { HpBar } from '../components/HpBar'
+import { useCharacters } from '../components/CharacterList'
 
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const
 
@@ -149,7 +150,7 @@ export function CharacterSheet() {
 
         <section className="card">
           <h3>Inventory</h3>
-          <InventoryPanel charId={charId} items={inventory ?? []} />
+          <InventoryPanel charId={charId} cid={cid} items={inventory ?? []} />
         </section>
 
         <section className="card">
@@ -249,9 +250,20 @@ function LevelUpButton({ c, charId, cid }: { c: Character; charId: string; cid: 
   )
 }
 
-function InventoryPanel({ charId, items }: { charId: string; items: InventoryItem[] }) {
+function InventoryPanel({
+  charId,
+  cid,
+  items,
+}: {
+  charId: string
+  cid: string
+  items: InventoryItem[]
+}) {
   const [name, setName] = useState('')
   const [qty, setQty] = useState(1)
+  const [giving, setGiving] = useState<string | null>(null) // entry_id being given
+  const { data: allCharacters } = useCharacters(cid)
+  const others = (allCharacters ?? []).filter((c) => c.id !== charId && c.status === 'active')
   const qc = useQueryClient()
 
   async function refresh() {
@@ -290,14 +302,35 @@ function InventoryPanel({ charId, items }: { charId: string; items: InventoryIte
       <ul className="plain-list">
         {items.length === 0 && <li className="muted">Empty pockets.</li>}
         {items.map((it) => (
-          <li key={it.entry_id} className="row">
-            <span className="grow">
-              {it.name}
-              {it.equipped && <span className="badge"> equipped</span>}
-            </span>
-            <button onClick={() => setQuantity(it.entry_id, it.quantity - 1)}>−</button>
-            <span>{it.quantity}</span>
-            <button onClick={() => setQuantity(it.entry_id, it.quantity + 1)}>+</button>
+          <li key={it.entry_id} className="col" style={{ gap: '0.25rem' }}>
+            <div className="row">
+              <span className="grow">
+                {it.name}
+                {it.equipped && <span className="badge"> equipped</span>}
+              </span>
+              <button onClick={() => setQuantity(it.entry_id, it.quantity - 1)}>−</button>
+              <span>{it.quantity}</span>
+              <button onClick={() => setQuantity(it.entry_id, it.quantity + 1)}>+</button>
+              {others.length > 0 && (
+                <button
+                  title="Give to a party member"
+                  aria-label={`Give ${it.name}`}
+                  onClick={() => setGiving(giving === it.entry_id ? null : it.entry_id)}
+                >
+                  🎁
+                </button>
+              )}
+            </div>
+            {giving === it.entry_id && (
+              <GiveForm
+                entry={it}
+                others={others}
+                onDone={async () => {
+                  setGiving(null)
+                  await refresh()
+                }}
+              />
+            )}
           </li>
         ))}
       </ul>
@@ -335,6 +368,59 @@ function NotesEditor({
     <div className="col" key={charId}>
       <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
       {notes !== initial && <button onClick={() => onSave(notes)}>Save notes</button>}
+    </div>
+  )
+}
+
+
+function GiveForm({
+  entry,
+  others,
+  onDone,
+}: {
+  entry: InventoryItem
+  others: { id: string; name: string }[]
+  onDone: () => void
+}) {
+  const [to, setTo] = useState(others[0]?.id ?? '')
+  const [amount, setAmount] = useState(1)
+  const [error, setError] = useState('')
+
+  return (
+    <div className="row" style={{ gap: '0.3rem', flexWrap: 'wrap' }}>
+      <select value={to} onChange={(e) => setTo(e.target.value)} style={{ width: 'auto' }}>
+        {others.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+      <input
+        type="number"
+        min={1}
+        max={entry.quantity}
+        value={amount}
+        onChange={(e) => setAmount(Number(e.target.value))}
+        style={{ width: '4rem' }}
+      />
+      <button
+        className="btn-primary"
+        onClick={async () => {
+          setError('')
+          try {
+            await api.post(`/inventory/${entry.entry_id}/give`, {
+              to_character_id: to,
+              quantity: amount,
+            })
+            onDone()
+          } catch (err) {
+            setError(err instanceof ApiError ? err.message : 'Give failed')
+          }
+        }}
+      >
+        Give
+      </button>
+      {error && <span className="error-text" style={{ fontSize: '0.8rem' }}>{error}</span>}
     </div>
   )
 }

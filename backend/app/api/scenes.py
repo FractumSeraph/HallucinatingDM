@@ -68,6 +68,10 @@ class MessageCreate(BaseModel):
     character_id: str | None = None
 
 
+class SkipRequest(BaseModel):
+    character_id: str | None = None
+
+
 class RollRequest(BaseModel):
     expression: str = Field(min_length=1, max_length=60)
     purpose: str = Field(default="raw", max_length=20)
@@ -342,19 +346,32 @@ async def post_message(
 
 
 @router.post("/scenes/{scene_id}/skip-turn")
-async def skip_turn(scene_id: str, db: DbSession, user: CurrentUser) -> dict[str, bool]:
+async def skip_turn(
+    scene_id: str, db: DbSession, user: CurrentUser, body: SkipRequest | None = None
+) -> dict[str, bool]:
     """A player declares they hold this round — counts as their declaration so
-    the round can resolve without waiting on them."""
+    the round can resolve without waiting on them. Players running more than
+    one character may say which one holds."""
     scene = await _get_scene_for_member(scene_id, db, user)
-    character = (
-        await db.execute(
-            select(Character).where(
-                Character.campaign_id == scene.campaign_id,
-                Character.user_id == user.id,
-                Character.status == "active",
+    if body and body.character_id:
+        character = await db.get(Character, body.character_id)
+        if (
+            not character
+            or character.campaign_id != scene.campaign_id
+            or character.user_id != user.id
+            or character.status != "active"
+        ):
+            raise bad_request("That isn't one of your active characters")
+    else:
+        character = (
+            await db.execute(
+                select(Character).where(
+                    Character.campaign_id == scene.campaign_id,
+                    Character.user_id == user.id,
+                    Character.status == "active",
+                )
             )
-        )
-    ).scalars().first()
+        ).scalars().first()
     if not character:
         raise bad_request("No active character to hold with")
 

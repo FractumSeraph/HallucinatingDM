@@ -61,9 +61,18 @@ The common complaints about hosted AI game masters, and how this design answers 
   the AI when it adjudicates.
 - **Combat tracker** — server-rolled initiative, SRD monsters instantiated with real
   stat blocks (`goblin x3`), turn/round tracking, players see monster health as words,
-  the DM sees numbers.
+  the DM sees numbers. The DM gets quick damage/heal chips on every row and can add
+  reinforcements mid-fight.
 - **Character sheets & inventory** — live HP bars, conditions, currency, spell slots,
   XP with level-up flow; every change broadcast instantly over WebSockets.
+- **DM table tools** — one-click **short/long rests** (same 5E rules as the AI's rest
+  tool), **secret dice rolls** players never see, an **Award XP** panel that announces
+  to the table and flags ready level-ups, and player management (remove a player;
+  their characters are retired, not deleted).
+- **Party play** — every message shows who's speaking; players running two characters
+  pick who talks from a composer selector; items can be **given to party members**
+  straight from the inventory; multiplayer rounds gather everyone's action before the
+  AI resolves (with Hold to pass and a DM force-resolve for AFK players).
 - **Beginner friendly** — a how-to-play primer opens automatically on a player's
   first scene, every rules term has a plain-words tooltip, and a **Beginner table**
   campaign setting makes the AI DM name each check, explain rules as they come up,
@@ -143,6 +152,13 @@ pulls the latest code, rebuilds, restarts, and waits for the health check. Your
 campaigns are never touched — schema migrations run automatically on boot.
 
 ## Running a game (DM guide)
+
+**Table controls at a glance.** In the game view rail: the combat tracker (▶ marks
+whose turn it is; −5/−1/+1 chips apply damage or healing; ＋ adds reinforcements) and
+⏳ Short / 🌙 Long rest buttons. In the dice bar: a 🤫 toggle makes your rolls secret.
+On the DM screen: Award XP, scene prep, pinned facts, content level, and the AI
+proposal queue. In the lobby: the invite code and player management.
+
 
 **Campaign & scenes.** Create the campaign (name, description, tone — the AI honors
 these), then from the lobby create your first scene. The **main** table is the shared

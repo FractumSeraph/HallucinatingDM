@@ -137,3 +137,117 @@ async def test_dm_removes_a_player(app_client):
     dm_id = next(m["user_id"] for m in members if m["role"] == "dm")
     resp = await app_client.delete(f"/api/v1/campaigns/{campaign['id']}/members/{dm_id}")
     assert resp.status_code == 400
+
+
+async def test_dm_awards_xp_to_the_party(app_client):
+    campaign, scene, character = await setup_game(app_client, dm_mode="human")
+    resp = await app_client.post(
+        f"/api/v1/campaigns/{campaign['id']}/award",
+        json={"xp_each": 300, "reason": "clearing the cellar", "scene_id": scene["id"]},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert character["name"] in body["recipients"]
+    assert character["name"] in body["level_ups_available"]  # 300 XP = level 2 ready
+
+    sheet = (await app_client.get(f"/api/v1/characters/{character['id']}")).json()
+    assert sheet["xp"] == 300
+    messages = (await app_client.get(f"/api/v1/scenes/{scene['id']}/messages")).json()
+    assert any("300 XP" in m["content"] and "cellar" in m["content"] for m in messages)
+
+    # Players can't award.
+    await app_client.post(
+        "/api/v1/auth/register",
+        json={"email": "p30@example.com", "password": "longenough", "display_name": "P"},
+    )
+    await app_client.post(
+        "/api/v1/campaigns/join", json={"invite_code": campaign["invite_code"]}
+    )
+    resp = await app_client.post(
+        f"/api/v1/campaigns/{campaign['id']}/award", json={"xp_each": 50}
+    )
+    assert resp.status_code == 403
+
+
+async def test_give_item_to_party_member(app_client):
+    campaign, scene, character = await setup_game(app_client, dm_mode="human")
+    from .test_dm_modes import BUILD
+
+    other = (
+        await app_client.post(
+            f"/api/v1/campaigns/{campaign['id']}/characters",
+            json={**BUILD, "name": "Borin"},
+        )
+    ).json()
+
+    # Mira gives Borin her dagger (from the wizard starting kit).
+    inv = (await app_client.get(f"/api/v1/characters/{character['id']}/inventory")).json()
+    dagger = next(i for i in inv if i["name"].lower() == "dagger")
+    resp = await app_client.post(
+        f"/api/v1/inventory/{dagger['entry_id']}/give",
+        json={"to_character_id": other["id"], "quantity": 1},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["to"] == "Borin"
+
+    theirs = (await app_client.get(f"/api/v1/characters/{other['id']}/inventory")).json()
+    assert any(i["name"].lower() == "dagger" for i in theirs)
+    mine = (await app_client.get(f"/api/v1/characters/{character['id']}/inventory")).json()
+    assert not any(i["name"].lower() == "dagger" for i in mine)  # only had one
+
+    # Can't give more than you have.
+    torch_like = theirs[0]
+    resp = await app_client.post(
+        f"/api/v1/inventory/{torch_like['entry_id']}/give",
+        json={"to_character_id": character["id"], "quantity": 9999},
+    )
+    assert resp.status_code == 400
+
+
+async def test_dm_adds_reinforcements_mid_combat(app_client):
+    campaign, scene, character = await setup_game(app_client, dm_mode="human")
+    resp = await app_client.post(
+        f"/api/v1/scenes/{scene['id']}/combat",
+        json={"participants": [character["name"], "wolf"]},
+    )
+    assert resp.status_code == 200
+    before = len(resp.json()["combatants"])
+
+    resp = await app_client.post(
+        f"/api/v1/scenes/{scene['id']}/combat/add", json={"participants": ["goblin x2"]}
+    )
+    assert resp.status_code == 200, resp.text
+    combatants = resp.json()["combatants"]
+    assert len(combatants) == before + 2
+    assert sum(1 for c in combatants if "Goblin" in c["name"]) == 2
+
+    messages = (await app_client.get(f"/api/v1/scenes/{scene['id']}/messages")).json()
+    assert any("Reinforcements" in m["content"] for m in messages)
+
+    # No active encounter → clear error.
+    await app_client.post(f"/api/v1/scenes/{scene['id']}/combat/end")
+    resp = await app_client.post(
+        f"/api/v1/scenes/{scene['id']}/combat/add", json={"participants": ["goblin"]}
+    )
+    assert resp.status_code == 400
+
+
+async def test_hold_with_a_chosen_character(app_client):
+    campaign, scene, character = await setup_game(app_client, dm_mode="ai")
+    resp = await app_client.post(
+        f"/api/v1/scenes/{scene['id']}/skip-turn", json={"character_id": character["id"]}
+    )
+    assert resp.status_code == 200
+    # Someone else's character is rejected.
+
+    await app_client.post(
+        "/api/v1/auth/register",
+        json={"email": "p31@example.com", "password": "longenough", "display_name": "P"},
+    )
+    await app_client.post(
+        "/api/v1/campaigns/join", json={"invite_code": campaign["invite_code"]}
+    )
+    resp = await app_client.post(
+        f"/api/v1/scenes/{scene['id']}/skip-turn", json={"character_id": character["id"]}
+    )
+    assert resp.status_code == 400

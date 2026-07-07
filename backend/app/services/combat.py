@@ -123,18 +123,11 @@ def _foe_budget_error(
     return None
 
 
-async def start_encounter(
-    db: AsyncSession,
-    scene: Scene,
-    participants: list[str],
-    enforce_budget: bool = False,
-) -> dict[str, Any]:
-    """participants: character/NPC names or ids, or SRD monster slugs/names,
-    optionally 'goblin x3' for multiples. With enforce_budget=True (the AI
-    path), encounters at/over the party's deadly XP budget are rejected."""
-    if await get_active_encounter(db, scene.id):
-        raise CombatError("An encounter is already active in this scene")
-
+async def _resolve_participants(
+    db: AsyncSession, scene: Scene, participants: list[str]
+) -> tuple[list[Combatant], list[int], list[int]]:
+    """Resolve names to Combatant rows (not yet persisted) + party levels and
+    foe XP for budget math. Raises CombatError on an unknown name."""
     # Resolve every participant BEFORE persisting anything, so a rejected
     # encounter leaves no orphan rows behind in the shared session.
     rows: list[Combatant] = []
@@ -219,6 +212,21 @@ async def start_encounter(
                 )
             )
 
+    return rows, party_levels, foe_xps
+
+async def start_encounter(
+    db: AsyncSession,
+    scene: Scene,
+    participants: list[str],
+    enforce_budget: bool = False,
+) -> dict[str, Any]:
+    """participants: character/NPC names or ids, or SRD monster slugs/names,
+    optionally 'goblin x3' for multiples. With enforce_budget=True (the AI
+    path), encounters at/over the party's deadly XP budget are rejected."""
+    if await get_active_encounter(db, scene.id):
+        raise CombatError("An encounter is already active in this scene")
+
+    rows, party_levels, foe_xps = await _resolve_participants(db, scene, participants)
     if not rows:
         raise CombatError("No combatants")
 
@@ -239,6 +247,38 @@ async def start_encounter(
     await db.flush()  # assign ids before referencing the first combatant
     encounter.active_combatant_id = rows[0].id
     await db.commit()
+    return await broadcast_combat(db, scene)
+
+
+async def add_combatants(
+    db: AsyncSession, scene: Scene, participants: list[str]
+) -> dict[str, Any]:
+    """Reinforcements: add combatants to the ACTIVE encounter. They roll
+    initiative but join at the end of the current order (they arrived late)."""
+    encounter = await get_active_encounter(db, scene.id)
+    if not encounter:
+        raise CombatError("No active encounter — use start_combat first")
+    rows, _party_levels, _foe_xps = await _resolve_participants(db, scene, participants)
+    if not rows:
+        raise CombatError("No combatants")
+    existing = list(
+        (
+            await db.execute(
+                select(Combatant).where(Combatant.encounter_id == encounter.id)
+            )
+        ).scalars()
+    )
+    next_order = max((c.sort_order for c in existing), default=-1) + 1
+    rows.sort(key=lambda c: (-c.initiative, c.name))
+    for offset, c in enumerate(rows):
+        c.encounter_id = encounter.id
+        c.sort_order = next_order + offset
+        db.add(c)
+    await db.commit()
+    await create_message(
+        db, scene, author_type="system", kind="system",
+        content="⚔️ Reinforcements join the fight: " + ", ".join(c.name for c in rows),
+    )
     return await broadcast_combat(db, scene)
 
 

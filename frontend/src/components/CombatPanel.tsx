@@ -8,6 +8,7 @@ import { HpBar } from './HpBar'
 export function CombatPanel({ sceneId, isDm }: { sceneId: string; isDm: boolean }) {
   const qc = useQueryClient()
   const [showStart, setShowStart] = useState(false)
+  const [showAdd, setShowAdd] = useState(false)
   const { data: combat } = useQuery<CombatState>({
     queryKey: ['scenes', sceneId, 'combat'],
     queryFn: () => api.get(`/scenes/${sceneId}/combat`),
@@ -99,6 +100,9 @@ export function CombatPanel({ sceneId, isDm }: { sceneId: string; isDm: boolean 
           </li>
         ))}
       </ul>
+      {isDm && showAdd && (
+        <StartForm sceneId={sceneId} add onDone={() => { setShowAdd(false); refresh() }} />
+      )}
       {isDm && (
         <div className="row" style={{ marginTop: '0.4rem' }}>
           <button
@@ -109,6 +113,9 @@ export function CombatPanel({ sceneId, isDm }: { sceneId: string; isDm: boolean 
             }
           >
             Next turn
+          </button>
+          <button title="Reinforcements arrive mid-fight" onClick={() => setShowAdd(!showAdd)}>
+            ＋
           </button>
           <button
             className="btn-danger"
@@ -134,7 +141,15 @@ function healthWord(current: number, max: number): string {
   return 'near death'
 }
 
-function StartForm({ sceneId, onDone }: { sceneId: string; onDone: () => void }) {
+function StartForm({
+  sceneId,
+  onDone,
+  add = false,
+}: {
+  sceneId: string
+  onDone: () => void
+  add?: boolean
+}) {
   const [text, setText] = useState('')
   const [error, setError] = useState('')
 
@@ -142,7 +157,7 @@ function StartForm({ sceneId, onDone }: { sceneId: string; onDone: () => void })
     e.preventDefault()
     setError('')
     try {
-      await api.post(`/scenes/${sceneId}/combat`, {
+      await api.post(`/scenes/${sceneId}/combat${add ? '/add' : ''}`, {
         participants: text.split(',').map((s) => s.trim()).filter(Boolean),
       })
       onDone()
