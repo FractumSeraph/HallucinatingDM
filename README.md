@@ -64,8 +64,13 @@ The common complaints about hosted AI game masters, and how this design answers 
   the DM sees numbers. The DM gets quick damage/heal chips on every row and can add
   reinforcements mid-fight.
 - **Character sheets & inventory** — live HP bars, one-tap condition add/remove,
-  currency, spell-slot spend/restore tracking, XP with level-up flow; every change
-  broadcast instantly over WebSockets.
+  currency, spell-slot spend/restore tracking; every change broadcast instantly over
+  WebSockets.
+- **Real leveling (SRD 1-20)** — the level-up dialog grants HP and slots, shows each
+  new class feature, offers **new spells** per your class's actual progression
+  (spellbook growth, known-spell tables, prepared-caster capacity, higher spell
+  levels as they unlock), and handles **Ability Score Improvements** at ASI levels —
+  with retroactive Constitution HP, all validated server-side.
 - **DM table tools** — one-click **short/long rests** (same 5E rules as the AI's rest
   tool), **secret dice rolls** players never see, an **Award XP** panel that announces
   to the table and flags ready level-ups, an editable **"story so far"** (fix the AI's

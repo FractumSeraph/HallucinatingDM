@@ -44,29 +44,43 @@ async def get_srd(db: AsyncSession, kind: str, slug: str) -> SrdEntry | None:
     return result.scalar_one_or_none()
 
 
-async def class_spell_options(db: AsyncSession, class_name: str) -> dict[str, Any]:
-    """Level-0 and level-1 spell names available to a class, from the SRD,
-    plus a short description per spell so pickers aren't a list of bare names."""
+async def class_spell_lists(
+    db: AsyncSession, class_name: str, max_level: int
+) -> dict[str, Any]:
+    """Class spells grouped by spell level (0..max_level) with short
+    descriptions — powers both the creation wizard and level-up picks."""
     rows = list((await db.execute(select(SrdEntry).where(SrdEntry.kind == "spell"))).scalars())
     cn = class_name.lower()
-    cantrips, level1 = [], []
+    by_level: dict[int, list[str]] = {}
     descriptions: dict[str, str] = {}
     for r in rows:
         d = r.data_json
         classes = [str(c).lower() for c in (d.get("classes") or [])]
         if cn not in classes:
             continue
-        name = d.get("name", r.name)
-        if d.get("level") == 0:
-            cantrips.append(name)
-        elif d.get("level") == 1:
-            level1.append(name)
-        else:
+        level = int(d.get("level", 99))
+        if level > max_level:
             continue
+        name = d.get("name", r.name)
+        by_level.setdefault(level, []).append(name)
         desc = " ".join(str(d.get("description", "")).split())
         if desc:
             descriptions[name] = desc[:160] + ("…" if len(desc) > 160 else "")
-    return {"cantrips": sorted(cantrips), "level1": sorted(level1), "descriptions": descriptions}
+    return {
+        "by_level": {lvl: sorted(names) for lvl, names in sorted(by_level.items())},
+        "descriptions": descriptions,
+    }
+
+
+async def class_spell_options(db: AsyncSession, class_name: str) -> dict[str, Any]:
+    """Level-0 and level-1 spell names available to a class, from the SRD,
+    plus a short description per spell so pickers aren't a list of bare names."""
+    lists = await class_spell_lists(db, class_name, 1)
+    return {
+        "cantrips": lists["by_level"].get(0, []),
+        "level1": lists["by_level"].get(1, []),
+        "descriptions": lists["descriptions"],
+    }
 
 
 async def _validate_spells(
