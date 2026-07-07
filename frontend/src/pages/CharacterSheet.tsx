@@ -276,9 +276,21 @@ const XP_THRESHOLDS = [
   120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000,
 ]
 
+interface LevelUpOptions {
+  new_level: number
+  hp_gain: number
+  features: { name: string; description: string }[]
+  asi: boolean
+  cantrip_picks: number
+  spell_picks: number
+  available: Record<string, string[]>
+  spell_descriptions: Record<string, string>
+}
+
+const ABILITY_NAMES = ['str', 'dex', 'con', 'int', 'wis', 'cha']
+
 function LevelUpButton({ c, charId, cid }: { c: Character; charId: string; cid: string }) {
-  const qc = useQueryClient()
-  const [error, setError] = useState('')
+  const [open, setOpen] = useState(false)
   const eligible = c.level < 20 && c.xp >= XP_THRESHOLDS[c.level + 1]
   if (!eligible) {
     const next = c.level < 20 ? XP_THRESHOLDS[c.level + 1] : null
@@ -290,21 +302,199 @@ function LevelUpButton({ c, charId, cid }: { c: Character; charId: string; cid: 
   }
   return (
     <div>
-      <button
-        className="btn-primary"
-        onClick={async () => {
-          try {
-            const updated = await api.post<Character>(`/characters/${charId}/level-up`)
-            qc.setQueryData(['characters', charId], updated)
-            qc.invalidateQueries({ queryKey: ['campaigns', cid, 'characters'] })
-          } catch (err) {
-            setError(err instanceof ApiError ? err.message : 'Level up failed')
-          }
-        }}
-      >
+      <button className="btn-primary" onClick={() => setOpen(true)}>
         ⬆️ Level up to {c.level + 1}!
       </button>
-      {error && <span className="error-text">{error}</span>}
+      {open && <LevelUpModal charId={charId} cid={cid} onClose={() => setOpen(false)} />}
+    </div>
+  )
+}
+
+function LevelUpModal({
+  charId,
+  cid,
+  onClose,
+}: {
+  charId: string
+  cid: string
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [cantrips, setCantrips] = useState<string[]>([])
+  const [spells, setSpells] = useState<string[]>([])
+  const [asiMode, setAsiMode] = useState<'two' | 'one'>('one')
+  const [asiA, setAsiA] = useState('str')
+  const [asiB, setAsiB] = useState('dex')
+
+  const { data: opts, isError } = useQuery<LevelUpOptions>({
+    queryKey: ['characters', charId, 'level-up-options'],
+    queryFn: () => api.get(`/characters/${charId}/level-up-options`),
+    retry: false,
+    staleTime: 0,
+  })
+
+  function toggle(list: string[], set: (v: string[]) => void, value: string, max: number) {
+    if (list.includes(value)) set(list.filter((v) => v !== value))
+    else if (list.length < max) set([...list, value])
+  }
+
+  async function confirm() {
+    if (!opts) return
+    setBusy(true)
+    setError('')
+    const asi = !opts.asi
+      ? {}
+      : asiMode === 'one'
+        ? { [asiA]: 2 }
+        : asiA === asiB
+          ? { [asiA]: 2 }
+          : { [asiA]: 1, [asiB]: 1 }
+    try {
+      const updated = await api.post<Character>(`/characters/${charId}/level-up`, {
+        cantrips,
+        spells,
+        asi,
+      })
+      qc.setQueryData(['characters', charId], updated)
+      qc.invalidateQueries({ queryKey: ['campaigns', cid, 'characters'] })
+      onClose()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Level up failed')
+      setBusy(false)
+    }
+  }
+
+  const spellLevels = opts
+    ? Object.keys(opts.available)
+        .filter((lvl) => lvl !== '0')
+        .sort()
+    : []
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal card" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+        {isError && (
+          <>
+            <p className="error-text">Couldn't load level-up options.</p>
+            <button onClick={onClose}>Close</button>
+          </>
+        )}
+        {!opts && !isError && <p className="muted">Consulting the rules…</p>}
+        {opts && (
+          <>
+            <h2 style={{ marginTop: 0 }}>Level {opts.new_level}!</h2>
+            <p className="muted">
+              +{opts.hp_gain} HP{opts.asi ? ' (plus any Constitution bonus)' : ''} · hit dice
+              and spell slots update automatically.
+            </p>
+
+            {opts.features.length > 0 && (
+              <>
+                <h4 style={{ margin: '0.5rem 0 0.25rem' }}>New features</h4>
+                {opts.features.map((f) => (
+                  <details key={f.name}>
+                    <summary>{f.name}</summary>
+                    <p className="muted">{f.description}</p>
+                  </details>
+                ))}
+              </>
+            )}
+
+            {opts.asi && (
+              <>
+                <h4 style={{ margin: '0.75rem 0 0.25rem' }}>Ability Score Improvement</h4>
+                <div className="row" style={{ flexWrap: 'wrap' }}>
+                  <label className="muted">
+                    <input
+                      type="radio"
+                      checked={asiMode === 'one'}
+                      onChange={() => setAsiMode('one')}
+                      style={{ width: 'auto' }}
+                    />{' '}
+                    +2 to one
+                  </label>
+                  <label className="muted">
+                    <input
+                      type="radio"
+                      checked={asiMode === 'two'}
+                      onChange={() => setAsiMode('two')}
+                      style={{ width: 'auto' }}
+                    />{' '}
+                    +1 to two
+                  </label>
+                  <select value={asiA} onChange={(e) => setAsiA(e.target.value)} style={{ width: 'auto' }}>
+                    {ABILITY_NAMES.map((a) => (
+                      <option key={a} value={a}>
+                        {a.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                  {asiMode === 'two' && (
+                    <select value={asiB} onChange={(e) => setAsiB(e.target.value)} style={{ width: 'auto' }}>
+                      {ABILITY_NAMES.map((a) => (
+                        <option key={a} value={a}>
+                          {a.toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </>
+            )}
+
+            {opts.cantrip_picks > 0 && (opts.available['0'] ?? []).length > 0 && (
+              <>
+                <h4 style={{ margin: '0.75rem 0 0.25rem' }}>
+                  New cantrips — pick {opts.cantrip_picks} ({cantrips.length} chosen)
+                </h4>
+                <div className="pick-grid">
+                  {(opts.available['0'] ?? []).map((name) => (
+                    <button
+                      key={name}
+                      className={`pick ${cantrips.includes(name) ? 'picked' : ''}`}
+                      title={opts.spell_descriptions[name]}
+                      onClick={() => toggle(cantrips, setCantrips, name, opts.cantrip_picks)}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {opts.spell_picks > 0 &&
+              spellLevels.map((lvl) => (
+                <div key={lvl}>
+                  <h4 style={{ margin: '0.75rem 0 0.25rem' }}>
+                    Level-{lvl} spells — {spells.length}/{opts.spell_picks} picked in total
+                  </h4>
+                  <div className="pick-grid">
+                    {(opts.available[lvl] ?? []).map((name) => (
+                      <button
+                        key={name}
+                        className={`pick ${spells.includes(name) ? 'picked' : ''}`}
+                        title={opts.spell_descriptions[name]}
+                        onClick={() => toggle(spells, setSpells, name, opts.spell_picks)}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+            {error && <p className="error-text">{error}</p>}
+            <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
+              <button onClick={onClose}>Cancel</button>
+              <button className="btn-primary" disabled={busy} onClick={confirm}>
+                {busy ? 'Leveling…' : `Confirm level ${opts.new_level}`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

@@ -251,12 +251,45 @@ async def chargen_suggest(
     return build
 
 
-@router.post("/characters/{character_id}/level-up")
-async def level_up(character_id: str, db: DbSession, user: CurrentUser) -> dict[str, Any]:
+class LevelUpRequest(BaseModel):
+    """Choices for the pending level: new spells and (at ASI levels) ability
+    bumps. All optional — an empty body levels up with no choices spent."""
+
+    cantrips: list[str] = []
+    spells: list[str] = []
+    asi: dict[str, int] = {}
+
+
+@router.get("/characters/{character_id}/level-up-options")
+async def level_up_options_endpoint(
+    character_id: str, db: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    """What the pending level-up grants: HP, slots, features, ASI, spell picks."""
     from app.services import rules_5e
+    from app.services.leveling import level_up_options
 
     character, role = await _get_character(character_id, db, user)
     _require_owner_or_dm(character, user.id, role)
+    if rules_5e.level_for_xp(character.xp) <= character.level:
+        needed = rules_5e.xp_for_next_level(character.level)
+        raise bad_request(
+            f"Not enough XP (need {needed}, have {character.xp})" if needed else "Already level 20"
+        )
+    return await level_up_options(db, character)
+
+
+@router.post("/characters/{character_id}/level-up")
+async def level_up(
+    character_id: str,
+    db: DbSession,
+    user: CurrentUser,
+    body: LevelUpRequest | None = None,
+) -> dict[str, Any]:
+    from app.services import leveling, rules_5e
+
+    character, role = await _get_character(character_id, db, user)
+    _require_owner_or_dm(character, user.id, role)
+    picks = body or LevelUpRequest()
 
     earned = rules_5e.level_for_xp(character.xp)
     if earned <= character.level:
@@ -265,10 +298,51 @@ async def level_up(character_id: str, db: DbSession, user: CurrentUser) -> dict[
             f"Not enough XP (need {needed}, have {character.xp})" if needed else "Already level 20"
         )
 
+    options = await leveling.level_up_options(db, character)
+
+    # --- Validate choices against what this level actually offers ------------
+    try:
+        if picks.asi and not options["asi"]:
+            raise leveling.LevelUpError(f"Level {options['new_level']} grants no ASI")
+        leveling.validate_asi(picks.asi, character.ability_scores_json)
+        if len(picks.cantrips) > options["cantrip_picks"]:
+            raise leveling.LevelUpError(
+                f"Only {options['cantrip_picks']} new cantrip(s) at this level"
+            )
+        if len(picks.spells) > options["spell_picks"]:
+            raise leveling.LevelUpError(
+                f"Only {options['spell_picks']} new spell(s) at this level"
+            )
+        valid_cantrips = {n.lower() for n in options["available"].get("0", [])}
+        valid_spells = {
+            n.lower()
+            for lvl, names in options["available"].items()
+            if lvl != "0"
+            for n in names
+        }
+        for name in picks.cantrips:
+            if name.lower() not in valid_cantrips:
+                raise leveling.LevelUpError(f"'{name}' is not an available cantrip")
+        for name in picks.spells:
+            if name.lower() not in valid_spells:
+                raise leveling.LevelUpError(f"'{name}' is not an available spell")
+    except leveling.LevelUpError as e:
+        raise bad_request(str(e)) from e
+
+    # --- Apply ----------------------------------------------------------------
+    old_con_mod = rules_5e.ability_modifier(character.ability_scores_json.get("con", 10))
+    if picks.asi:
+        scores = dict(character.ability_scores_json)
+        for ability, bump in picks.asi.items():
+            scores[ability] = scores.get(ability, 10) + bump
+        character.ability_scores_json = scores
+    new_con_mod = rules_5e.ability_modifier(character.ability_scores_json.get("con", 10))
+
+    # Retroactive CON: a higher modifier applies to every level already taken.
+    retro = (new_con_mod - old_con_mod) * character.level
     character.level += 1
     hit_die = int(character.sheet_json.get("hit_die", 8))
-    con_mod = rules_5e.ability_modifier(character.ability_scores_json.get("con", 10))
-    gained = max(1, hit_die // 2 + 1 + con_mod)
+    gained = max(1, hit_die // 2 + 1 + new_con_mod) + retro
     character.hp_max += gained
     character.hp_current += gained
 
@@ -285,6 +359,20 @@ async def level_up(character_id: str, db: DbSession, user: CurrentUser) -> dict[
     hd["max"] = character.level
     resources["hit_dice"] = hd
     character.resources_json = resources
+
+    # New class features + learned spells live on the sheet.
+    sheet = dict(character.sheet_json)
+    if options["features"]:
+        sheet["features"] = list(sheet.get("features") or []) + options["features"]
+    if picks.cantrips or picks.spells:
+        spells = {
+            "cantrips": list((sheet.get("spells") or {}).get("cantrips") or []),
+            "known": list((sheet.get("spells") or {}).get("known") or []),
+        }
+        spells["cantrips"] += picks.cantrips
+        spells["known"] += picks.spells
+        sheet["spells"] = spells
+    character.sheet_json = sheet
 
     await db.commit()
     broadcast_character(character)
