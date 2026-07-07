@@ -63,12 +63,14 @@ The common complaints about hosted AI game masters, and how this design answers 
   stat blocks (`goblin x3`), turn/round tracking, players see monster health as words,
   the DM sees numbers. The DM gets quick damage/heal chips on every row and can add
   reinforcements mid-fight.
-- **Character sheets & inventory** — live HP bars, conditions, currency, spell slots,
-  XP with level-up flow; every change broadcast instantly over WebSockets.
+- **Character sheets & inventory** — live HP bars, one-tap condition add/remove,
+  currency, spell-slot spend/restore tracking, XP with level-up flow; every change
+  broadcast instantly over WebSockets.
 - **DM table tools** — one-click **short/long rests** (same 5E rules as the AI's rest
   tool), **secret dice rolls** players never see, an **Award XP** panel that announces
-  to the table and flags ready level-ups, and player management (remove a player;
-  their characters are retired, not deleted).
+  to the table and flags ready level-ups, an editable **"story so far"** (fix the AI's
+  memory at the source), and player management (remove a player; their characters are
+  retired, not deleted).
 - **Party play** — every message shows who's speaking; players running two characters
   pick who talks from a composer selector; items can be **given to party members**
   straight from the inventory; multiplayer rounds gather everyone's action before the

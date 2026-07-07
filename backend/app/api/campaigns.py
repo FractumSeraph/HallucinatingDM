@@ -29,6 +29,9 @@ class CampaignPatch(BaseModel):
     description: str | None = None
     settings: dict[str, Any] | None = None
     world_clock: str | None = None
+    # The AI's rolling "story so far" — DM-editable so wrong memories can be
+    # corrected at the source (it feeds every future prompt).
+    summary: str | None = None
 
 
 class CampaignOut(BaseModel):
@@ -129,6 +132,8 @@ async def update_campaign(
         campaign.settings_json = body.settings
     if body.world_clock is not None:
         campaign.world_clock = body.world_clock
+    if body.summary is not None:
+        campaign.summary = body.summary
     await db.commit()
     return _campaign_out(campaign, member.role)
 

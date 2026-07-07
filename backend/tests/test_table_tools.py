@@ -251,3 +251,40 @@ async def test_hold_with_a_chosen_character(app_client):
         f"/api/v1/scenes/{scene['id']}/skip-turn", json={"character_id": character["id"]}
     )
     assert resp.status_code == 400
+
+
+async def test_spell_slot_spend_and_restore(app_client):
+    campaign, _scene, character = await setup_game(app_client, dm_mode="human")
+    # Mira the wizard has L1 slots.
+    resp = await app_client.post(
+        f"/api/v1/characters/{character['id']}/spell-slot", json={"level": "1", "op": "spend"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["spell_slots_json"]["1"]["used"] == 1
+
+    resp = await app_client.post(
+        f"/api/v1/characters/{character['id']}/spell-slot", json={"level": "1", "op": "restore"}
+    )
+    assert resp.json()["spell_slots_json"]["1"]["used"] == 0
+
+    # Can't spend below zero remaining or use a level you don't have.
+    for _ in range(10):
+        resp = await app_client.post(
+            f"/api/v1/characters/{character['id']}/spell-slot", json={"level": "1", "op": "spend"}
+        )
+    assert resp.status_code == 400
+    resp = await app_client.post(
+        f"/api/v1/characters/{character['id']}/spell-slot", json={"level": "9", "op": "spend"}
+    )
+    assert resp.status_code == 400
+
+
+async def test_dm_edits_the_campaign_summary(app_client):
+    campaign, _scene, _character = await setup_game(app_client, dm_mode="human")
+    resp = await app_client.patch(
+        f"/api/v1/campaigns/{campaign['id']}",
+        json={"summary": "The heroes saved the mill and owe the miller a favor."},
+    )
+    assert resp.status_code == 200
+    recaps = (await app_client.get(f"/api/v1/campaigns/{campaign['id']}/recaps")).json()
+    assert "owe the miller" in recaps["campaign_summary"]
