@@ -44,21 +44,29 @@ async def get_srd(db: AsyncSession, kind: str, slug: str) -> SrdEntry | None:
     return result.scalar_one_or_none()
 
 
-async def class_spell_options(db: AsyncSession, class_name: str) -> dict[str, list[str]]:
-    """Level-0 and level-1 spell names available to a class, from the SRD."""
+async def class_spell_options(db: AsyncSession, class_name: str) -> dict[str, Any]:
+    """Level-0 and level-1 spell names available to a class, from the SRD,
+    plus a short description per spell so pickers aren't a list of bare names."""
     rows = list((await db.execute(select(SrdEntry).where(SrdEntry.kind == "spell"))).scalars())
     cn = class_name.lower()
     cantrips, level1 = [], []
+    descriptions: dict[str, str] = {}
     for r in rows:
         d = r.data_json
         classes = [str(c).lower() for c in (d.get("classes") or [])]
         if cn not in classes:
             continue
+        name = d.get("name", r.name)
         if d.get("level") == 0:
-            cantrips.append(d.get("name", r.name))
+            cantrips.append(name)
         elif d.get("level") == 1:
-            level1.append(d.get("name", r.name))
-    return {"cantrips": sorted(cantrips), "level1": sorted(level1)}
+            level1.append(name)
+        else:
+            continue
+        desc = " ".join(str(d.get("description", "")).split())
+        if desc:
+            descriptions[name] = desc[:160] + ("…" if len(desc) > 160 else "")
+    return {"cantrips": sorted(cantrips), "level1": sorted(level1), "descriptions": descriptions}
 
 
 async def _validate_spells(

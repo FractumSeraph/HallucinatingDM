@@ -171,6 +171,10 @@ async def run_turn(scene_id: str) -> None:
         # Assist mode: the whole turn (narration, tool chips, status line) is a
         # private draft — nothing reaches players until the DM approves.
         assist = scene.dm_mode == "assist"
+        # Copilot: the DM watches narration stream live, but players only get
+        # the finished message after the secret-leak scan passes — otherwise a
+        # leak would have already streamed to their screens token by token.
+        private_stream = assist or scene.dm_mode == "copilot"
 
         try:
             _status(campaign.id, scene_id, "The DM considers the scene…", dm_only=assist)
@@ -198,7 +202,7 @@ async def run_turn(scene_id: str) -> None:
                                     {"stream_id": stream_id, "draft": assist}, scene_id,
                                 ),
                                 scene_id=scene_id,
-                                dm_only=assist,
+                                dm_only=private_stream,
                             )
                         buffer += event.text
                         # In prompted mode, hold back once a tool fence opens.
@@ -214,7 +218,7 @@ async def run_turn(scene_id: str) -> None:
                                     scene_id,
                                 ),
                                 scene_id=scene_id,
-                                dm_only=assist,
+                                dm_only=private_stream,
                             )
                     elif isinstance(event, ToolCall):
                         native_calls.append(event)
@@ -248,7 +252,7 @@ async def run_turn(scene_id: str) -> None:
                                 {"stream_id": stream_id, "message": None}, scene_id,
                             ),
                             scene_id=scene_id,
-                            dm_only=assist,
+                            dm_only=private_stream,
                         )
                     steps.append(
                         {
@@ -304,18 +308,9 @@ async def run_turn(scene_id: str) -> None:
                             visibility="dm",
                         )
                 if started:
-                    if hold_narration and not assist:
-                        # Copilot leak-hold: players already watched the deltas
-                        # stream in — retract their bubble (message=None) so the
-                        # held text doesn't stay pinned on their screens.
-                        hub.broadcast(
-                            campaign.id,
-                            events.make_event(
-                                events.STREAM_END, campaign.id,
-                                {"stream_id": stream_id, "message": None}, scene_id,
-                            ),
-                            scene_id=scene_id,
-                        )
+                    # Players in copilot never saw the stream (dm_only above);
+                    # a non-held message reaches them whole via this event, and
+                    # a held one stays DM-only with nothing to retract.
                     hub.broadcast(
                         campaign.id,
                         events.make_event(

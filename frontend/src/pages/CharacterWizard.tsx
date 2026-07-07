@@ -33,7 +33,30 @@ interface ClassInfo {
   spells_known: number
   cantrips: string[]
   level1: string[]
+  spell_descriptions: Record<string, string>
   starting_kit: { item: string; quantity: number }[]
+}
+
+// One-line plain-language skill meanings for total beginners.
+const SKILL_HINTS: Record<string, string> = {
+  acrobatics: 'Flips, balance, tumbling free',
+  'animal handling': 'Calming and controlling animals',
+  arcana: 'Knowing about magic and the arcane',
+  athletics: 'Climbing, jumping, swimming, grappling',
+  deception: 'Lying convincingly',
+  history: 'Recalling lore and past events',
+  insight: "Reading people's true intentions",
+  intimidation: 'Scaring someone into compliance',
+  investigation: 'Finding clues and deducing answers',
+  medicine: 'Stabilizing the dying, diagnosing illness',
+  nature: 'Knowing plants, animals, and weather',
+  perception: 'Spotting, hearing, noticing things',
+  performance: 'Entertaining a crowd',
+  persuasion: 'Winning someone over honestly',
+  religion: 'Knowing gods, rites, and holy lore',
+  'sleight of hand': 'Pickpocketing and palming objects',
+  stealth: 'Sneaking without being seen or heard',
+  survival: 'Tracking, foraging, not getting lost',
 }
 
 const ABILITIES = ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const
@@ -214,6 +237,14 @@ export function CharacterWizard() {
         personality: string
         backstory: string
       }>(`/campaigns/${cid}/chargen-suggest`, { concept })
+      if (races && !races.some((r) => r.slug === build.race)) {
+        setAiError(`The AI suggested an unknown race ('${build.race}') — try rephrasing.`)
+        return
+      }
+      if (classes && !classes.some((c) => c.slug === build.klass)) {
+        setAiError(`The AI suggested an unknown class ('${build.klass}') — try rephrasing.`)
+        return
+      }
       setName(build.name)
       setRaceSlug(build.race)
       setSubrace(build.subrace)
@@ -494,6 +525,7 @@ export function CharacterWizard() {
                   <button
                     key={s}
                     className={`pick ${skills.includes(s.toLowerCase()) ? 'picked' : ''}`}
+                    title={SKILL_HINTS[s.toLowerCase()]}
                     onClick={() => toggleSkill(s)}
                   >
                     {s}
@@ -517,6 +549,7 @@ export function CharacterWizard() {
                   <button
                     key={s}
                     className={`pick ${cantrips.includes(s) ? 'picked' : ''}`}
+                    title={classInfo.spell_descriptions?.[s]}
                     onClick={() => toggleFrom(cantrips, setCantrips, s, classInfo.cantrips_known)}
                   >
                     {s}
@@ -531,6 +564,7 @@ export function CharacterWizard() {
                   <button
                     key={s}
                     className={`pick ${spellsKnown.includes(s) ? 'picked' : ''}`}
+                    title={classInfo.spell_descriptions?.[s]}
                     onClick={() => toggleFrom(spellsKnown, setSpellsKnown, s, classInfo.spells_known)}
                   >
                     {s}

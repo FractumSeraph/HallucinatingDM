@@ -144,7 +144,12 @@ function RecapCard({ campaignId }: { campaignId: string }) {
       {data.recaps.length > 0 && (
         <ul className="plain-list" style={{ fontSize: '0.85rem' }}>
           {data.recaps.map((r, i) => (
-            <li key={i}>• {r.content}</li>
+            <li key={i}>
+              • {r.content}{' '}
+              <span className="muted" style={{ fontSize: '0.75rem' }}>
+                ({new Date(r.created_at).toLocaleDateString()})
+              </span>
+            </li>
           ))}
         </ul>
       )}

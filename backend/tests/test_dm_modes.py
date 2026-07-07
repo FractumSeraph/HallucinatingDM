@@ -431,3 +431,36 @@ async def test_retcon_unstarts_combat(app_client):
     await app_client.post(f"/api/v1/scenes/{scene['id']}/retcon-last-turn")
     combat = (await app_client.get(f"/api/v1/scenes/{scene['id']}/combat")).json()
     assert combat["encounter"] is None  # the fight never happened
+
+
+async def test_copilot_streams_stay_dm_only_until_scanned(app_client, monkeypatch):
+    """In copilot, narration streams live to the DM only; players receive the
+    finished message after the leak scan — a leak can never flash onto their
+    screens token by token."""
+    campaign, scene, character = await setup_game(app_client, dm_mode="copilot")
+
+    from app.realtime import events
+    from app.realtime.hub import hub
+
+    recorded: list[tuple[str, bool]] = []
+    original = hub.broadcast
+
+    def record(campaign_id, event, **kwargs):
+        recorded.append((event["type"], bool(kwargs.get("dm_only", False))))
+        return original(campaign_id, event, **kwargs)
+
+    monkeypatch.setattr(hub, "broadcast", record)
+
+    make_mock([[TextDelta("The bandit drops his blade and runs."), Done()]])
+    from app.ai.dm_agent import run_turn
+
+    await run_turn(scene["id"])
+
+    deltas = [dm_only for t, dm_only in recorded if t == events.STREAM_DELTA]
+    assert deltas and all(deltas)  # every streamed token was DM-only
+    starts = [dm_only for t, dm_only in recorded if t == events.STREAM_START]
+    assert starts and all(starts)
+    # The clean (non-held) final message still reaches players.
+    ends = [dm_only for t, dm_only in recorded if t == events.STREAM_END]
+    assert any(not dm_only for dm_only in ends)
+    set_provider(None)
