@@ -193,6 +193,61 @@ async def remove_member(
     return {"ok": True}
 
 
+class AwardRequest(BaseModel):
+    xp_each: int = Field(ge=1, le=100_000)
+    reason: str = Field(default="", max_length=200)
+    scene_id: str | None = None  # where to post the announcement
+
+
+@router.post("/{campaign_id}/award")
+async def award_xp(
+    campaign_id: str, body: AwardRequest, db: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    """DM awards XP to every active party member — the human-DM twin of the
+    AI's award tool. Posts an announcement and flags available level-ups."""
+    await require_campaign_dm(campaign_id, db, user)
+    from app.models import Character, Scene
+    from app.services import rules_5e
+    from app.services.bookkeeping import broadcast_character
+
+    characters = list(
+        (
+            await db.execute(
+                select(Character).where(
+                    Character.campaign_id == campaign_id, Character.status == "active"
+                )
+            )
+        ).scalars()
+    )
+    if not characters:
+        raise bad_request("No active party members to award")
+    level_ups: list[str] = []
+    for c in characters:
+        c.xp += body.xp_each
+        if rules_5e.level_for_xp(c.xp) > c.level:
+            level_ups.append(c.name)
+        broadcast_character(campaign_id, c)
+    await db.commit()
+
+    scene = await db.get(Scene, body.scene_id) if body.scene_id else None
+    if scene and scene.campaign_id == campaign_id:
+        from app.services.messages import create_message
+
+        note = f"🏅 The party earns {body.xp_each} XP each"
+        if body.reason:
+            note += f" — {body.reason}"
+        if level_ups:
+            note += f". Ready to level up: {', '.join(level_ups)}!"
+        await create_message(
+            db, scene, author_type="system", kind="system", content=note
+        )
+    return {
+        "xp_each": body.xp_each,
+        "recipients": [c.name for c in characters],
+        "level_ups_available": level_ups,
+    }
+
+
 class RecapEntry(BaseModel):
     scene_id: str | None
     content: str

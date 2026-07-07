@@ -49,6 +49,10 @@ export function DmScreen() {
           <ContentLevelPanel campaignId={cid} />
         </section>
         <section className="card">
+          <h3>Award XP</h3>
+          <AwardPanel campaignId={cid} />
+        </section>
+        <section className="card">
           <h3>Model &amp; usage</h3>
           <CampaignLlmPanel campaignId={cid} />
         </section>
@@ -381,6 +385,66 @@ function CampaignLlmPanel({ campaignId }: { campaignId: string }) {
         </button>
         {status && <span className="muted">{status}</span>}
       </div>
+    </div>
+  )
+}
+
+function AwardPanel({ campaignId }: { campaignId: string }) {
+  const { data: scenes } = useScenes(campaignId)
+  const [xp, setXp] = useState('100')
+  const [reason, setReason] = useState('')
+  const [status, setStatus] = useState('')
+  const mainScene = scenes?.find((s) => s.kind === 'main') ?? scenes?.[0]
+
+  async function award() {
+    setStatus('')
+    const amount = Number(xp)
+    if (!Number.isFinite(amount) || amount < 1) {
+      setStatus('Enter a positive XP amount')
+      return
+    }
+    try {
+      const res = await api.post<{ recipients: string[]; level_ups_available: string[] }>(
+        `/campaigns/${campaignId}/award`,
+        { xp_each: amount, reason, scene_id: mainScene?.id ?? null },
+      )
+      setStatus(
+        `Awarded ${amount} XP to ${res.recipients.length} character(s)` +
+          (res.level_ups_available.length
+            ? ` — level up ready: ${res.level_ups_available.join(', ')}!`
+            : ''),
+      )
+      setReason('')
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : 'Award failed')
+    }
+  }
+
+  return (
+    <div className="col" style={{ gap: '0.4rem' }}>
+      <p className="muted" style={{ margin: 0, fontSize: '0.82rem' }}>
+        Every active party member gets this much XP. The announcement posts to the
+        main table.
+      </p>
+      <div className="row">
+        <input
+          type="number"
+          min={1}
+          value={xp}
+          onChange={(e) => setXp(e.target.value)}
+          style={{ width: '6rem' }}
+        />
+        <input
+          className="grow"
+          placeholder="For what? (optional — shown to players)"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+        <button className="btn-primary" onClick={award}>
+          🏅 Award
+        </button>
+      </div>
+      {status && <span className="muted" style={{ fontSize: '0.82rem' }}>{status}</span>}
     </div>
   )
 }

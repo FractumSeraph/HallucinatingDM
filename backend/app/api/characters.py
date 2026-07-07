@@ -337,6 +337,77 @@ async def add_inventory(
     return _inventory_out(entry, item)
 
 
+class GiveRequest(BaseModel):
+    to_character_id: str
+    quantity: int = Field(default=1, ge=1, le=10_000)
+
+
+@router.post("/inventory/{entry_id}/give")
+async def give_item(
+    entry_id: str, body: GiveRequest, db: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    """Hand items to a party member: moves quantity from one character's pack
+    to another's. Owner (or DM) of the giving character only."""
+    entry = await db.get(InventoryEntry, entry_id)
+    if not entry or entry.owner_type != "character":
+        raise not_found("Inventory entry")
+    giver, role = await _get_character(entry.owner_id, db, user)
+    _require_owner_or_dm(giver, user.id, role)
+
+    receiver = await db.get(Character, body.to_character_id)
+    if (
+        not receiver
+        or receiver.campaign_id != giver.campaign_id
+        or receiver.status != "active"
+    ):
+        raise bad_request("Unknown or inactive recipient in this campaign")
+    if receiver.id == giver.id:
+        raise bad_request("They already have it")
+    if body.quantity > entry.quantity:
+        raise bad_request(f"Only {entry.quantity} available to give")
+
+    item = await db.get(Item, entry.item_id)
+    entry.quantity -= body.quantity
+    if entry.quantity == 0:
+        await db.delete(entry)
+    target = (
+        await db.execute(
+            select(InventoryEntry).where(
+                InventoryEntry.owner_type == "character",
+                InventoryEntry.owner_id == receiver.id,
+                InventoryEntry.item_id == entry.item_id,
+            )
+        )
+    ).scalars().first()
+    if target:
+        target.quantity += body.quantity
+    else:
+        db.add(
+            InventoryEntry(
+                item_id=entry.item_id,
+                owner_type="character",
+                owner_id=receiver.id,
+                quantity=body.quantity,
+            )
+        )
+    await db.commit()
+
+    assert item
+    for char_id in (giver.id, receiver.id):
+        hub.broadcast(
+            giver.campaign_id,
+            events.make_event(
+                events.INVENTORY_UPDATED, giver.campaign_id, {"character_id": char_id}
+            ),
+        )
+    return {
+        "given": body.quantity,
+        "item": item.name,
+        "from": giver.name,
+        "to": receiver.name,
+    }
+
+
 @router.patch("/inventory/{entry_id}")
 async def patch_inventory(
     entry_id: str, body: InventoryPatch, db: DbSession, user: CurrentUser
