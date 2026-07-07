@@ -22,12 +22,20 @@ export function WorldPage() {
   const [tab, setTab] = useState<(typeof TABS)[number]>('Locations')
   useLiveCache(cid)
 
-  const { data: world } = useQuery<World>({
+  const { data: world, isLoading, isError } = useQuery<World>({
     queryKey: ['campaigns', cid, 'world'],
     queryFn: () => api.get(`/campaigns/${cid}/world`),
   })
 
   const isDm = campaign?.my_role === 'dm'
+
+  if (isLoading) return <div className="page-pad muted">Loading the world…</div>
+  if (isError)
+    return (
+      <div className="page-pad error-text">
+        Couldn't load the world — check your connection and refresh.
+      </div>
+    )
 
   return (
     <div className="page-pad container">
@@ -115,11 +123,16 @@ function EntityEditor({
     e.preventDefault()
     if (!values[nameKey]?.trim()) return
     const fields = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== ''))
-    if (editing) {
-      await api.patch(`/world/${kind}/${existing!.id}`, { fields })
-    } else {
-      await api.post(`/campaigns/${campaignId}/world/${kind}`, { fields })
-      setValues((v) => Object.fromEntries(Object.keys(v).map((k) => [k, ''])))
+    try {
+      if (editing) {
+        await api.patch(`/world/${kind}/${existing!.id}`, { fields })
+      } else {
+        await api.post(`/campaigns/${campaignId}/world/${kind}`, { fields })
+        setValues((v) => Object.fromEntries(Object.keys(v).map((k) => [k, ''])))
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Saving failed — try again.')
+      return
     }
     await qc.invalidateQueries({ queryKey: ['campaigns', campaignId, 'world'] })
     onDone?.()

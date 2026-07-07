@@ -288,6 +288,11 @@ async def start_combat(ctx: ToolContext, args: StartCombatArgs) -> ToolResult:
         )
     except combat_service.CombatError as e:
         return ToolResult(ok=False, error=str(e))
+    # Retcon must be able to un-start the fight (delete encounter+combatants).
+    if snapshot.get("encounter"):
+        ctx.inverse_patches.append(
+            {"kind": "encounter", "id": snapshot["encounter"]["id"], "patch": {"_created": True}}
+        )
     order = [
         f"{c['name']} ({c['initiative']})" for c in snapshot["combatants"]
     ]

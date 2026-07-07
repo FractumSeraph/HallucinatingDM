@@ -29,10 +29,23 @@ export function HowToPlay({ onClose }: { onClose: () => void }) {
             are my options?"
           </p>
           <p style={{ margin: 0 }}>
+            <strong>Playing with friends?</strong> The DM waits for everyone to say what
+            they do before the story moves. Nothing to add this round? Tap{' '}
+            <strong>⏭ Hold</strong> to pass. If the story ever seems stalled, tap{' '}
+            <strong>✨ Continue</strong> to nudge the DM along.
+          </p>
+          <p style={{ margin: 0 }}>
             <strong>Extras:</strong> <strong>🎲</strong> opens quick dice (d20, advantage…),
             or type <code>/roll 2d6+3</code>. Tick <strong>OOC</strong> for table talk the
             DM ignores. Your character sheet (HP, items, gold) updates by itself as you
             play — find it in the campaign lobby.
+          </p>
+          <p style={{ margin: 0, fontSize: '0.85rem' }} className="muted">
+            <strong>Words you'll see:</strong> <strong>HP</strong> = your health.{' '}
+            <strong>AC</strong> = how hard you are to hit. <strong>d20</strong> = the
+            20-sided die most rolls use — higher is better. <strong>DC</strong> = the
+            number a roll needs to reach. <strong>Advantage</strong> = roll twice, keep
+            the better one. Don't memorize any of this — the DM explains as you go.
           </p>
         </div>
         <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>

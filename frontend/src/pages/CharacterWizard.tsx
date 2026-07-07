@@ -243,7 +243,7 @@ export function CharacterWizard() {
         <span>🔮</span>
         <input
           className="grow"
-          placeholder='Let the AI draft one: "a grumpy dwarf cleric who hates the sea"'
+          placeholder='New to D&D? Describe any hero in plain words — "a grumpy dwarf cleric who hates the sea" — and we build the whole sheet.'
           value={concept}
           onChange={(e) => setConcept(e.target.value)}
         />
@@ -319,12 +319,24 @@ export function CharacterWizard() {
       {step === 1 && (
         <section className="card">
           <h3>Ability scores</h3>
-          <p className="muted">Set these first — then pick a class that plays to your strengths.</p>
+          <p className="muted">
+            Six numbers for how good your hero is at things — higher is better.
+            Strength (muscle), Dexterity (agility), Constitution (toughness),
+            Intelligence (book smarts), Wisdom (awareness), Charisma (presence).
+            Set these first — then pick a class that plays to your strengths.
+          </p>
           <div className="row" style={{ marginBottom: '1rem' }}>
             {(['standard', 'pointbuy', 'roll'] as const).map((m) => (
               <button
                 key={m}
                 className={method === m ? 'btn-primary' : ''}
+                title={
+                  m === 'standard'
+                    ? 'Simplest: place six preset numbers where you want them'
+                    : m === 'pointbuy'
+                      ? 'Build your own spread from a points budget'
+                      : 'Let the dice decide — classic and risky'
+                }
                 onClick={() => {
                   setMethod(m)
                   setRolled(false)
@@ -402,6 +414,11 @@ export function CharacterWizard() {
       {step === 2 && (
         <section className="card">
           <h3>Choose a class</h3>
+          <p className="muted">
+            Your job in the party — how you fight, sneak, heal, or cast. Bigger
+            hit die (d12 &gt; d6) = tougher; "casts with" tells you which ability
+            powers your magic.
+          </p>
           <div className="pick-grid">
             {classes?.map((c) => (
               <button
@@ -413,7 +430,10 @@ export function CharacterWizard() {
                 }}
               >
                 <strong>{c.name}</strong>
-                <span className="muted">
+                <span
+                  className="muted"
+                  title={`Hit die d${c.data.hit_die}: health gained per level. Saves: what you're good at resisting.`}
+                >
                   d{c.data.hit_die} · saves {c.data.saving_throws.join('/')}
                   {c.data.spellcasting_ability ? ` · casts with ${c.data.spellcasting_ability}` : ''}
                 </span>
@@ -488,6 +508,10 @@ export function CharacterWizard() {
               <h4 style={{ margin: '0.5rem 0 0.25rem' }}>
                 Cantrips — pick {classInfo.cantrips_known} ({cantrips.length} chosen)
               </h4>
+              <p className="muted" style={{ margin: '0 0 0.25rem' }}>
+                Cantrips are small spells you cast as often as you like;
+                level-1 spells are stronger but limited between rests.
+              </p>
               <div className="pick-grid">
                 {classInfo.cantrips.map((s) => (
                   <button

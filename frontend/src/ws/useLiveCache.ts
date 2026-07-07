@@ -64,6 +64,8 @@ export function useLiveCache(campaignId: string | undefined) {
       }
       case EVT.QUEST_UPDATED:
         qc.invalidateQueries({ queryKey: ['campaigns', campaignId, 'quests'] })
+        // The World page reads quests from the 'world' query — keep it live too.
+        qc.invalidateQueries({ queryKey: ['campaigns', campaignId, 'world'] })
         break
       case EVT.WORLD_ENTITY_CHANGED:
         qc.invalidateQueries({ queryKey: ['campaigns', campaignId, 'world'] })

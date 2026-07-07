@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../api/client'
 import { useCampaign, useMe, useMembers, useRecaps } from '../api/hooks'
 import { SceneList } from '../components/SceneList'
-import { CharacterList } from '../components/CharacterList'
+import { CharacterList, useCharacters } from '../components/CharacterList'
 import { useLiveCache } from '../ws/useLiveCache'
 
 export function LobbyPage() {
@@ -42,6 +42,7 @@ export function LobbyPage() {
         </div>
       </div>
 
+      <FirstStepsBanner campaignId={cid} isDm={isDm} />
       <RecapCard campaignId={cid} />
 
       <div className="lobby-grid">
@@ -105,6 +106,29 @@ export function LobbyPage() {
         </section>
       </div>
     </div>
+  )
+}
+
+function FirstStepsBanner({ campaignId, isDm }: { campaignId: string; isDm: boolean }) {
+  const { data: me } = useMe()
+  const { data: characters } = useCharacters(campaignId)
+  if (isDm || !me || !characters) return null
+  const mine = characters.some((c) => c.user_id === me.id && c.status === 'active')
+  if (mine) return null
+  return (
+    <section className="card" style={{ marginTop: '1rem', borderColor: 'var(--accent)' }}>
+      <strong>New here? Start by creating your character.</strong>{' '}
+      <span className="muted">
+        Never played D&D? No problem — describe any hero in plain words ("a shy
+        halfling cook who's secretly brave") and the app builds the whole sheet for
+        you. Then open a scene and just say what your character does.
+      </span>
+      <div style={{ marginTop: '0.6rem' }}>
+        <Link className="btn btn-primary" to={`/campaigns/${campaignId}/characters/new`}>
+          Create your character →
+        </Link>
+      </div>
+    </section>
   )
 }
 

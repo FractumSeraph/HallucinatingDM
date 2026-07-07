@@ -23,11 +23,19 @@ export function GameView() {
   const [streams, setStreams] = useState<Record<string, StreamBuffer>>({})
   const [aiStatus, setAiStatus] = useState('')
   const [actionError, setActionError] = useState('')
-  const [showHelp, setShowHelp] = useState(false)
+  // First-ever game visit: open the how-to-play primer automatically so a
+  // brand-new player learns "just say what you do" without hunting for "?".
+  const [showHelp, setShowHelp] = useState(
+    () => !localStorage.getItem('landl-howto-seen'),
+  )
+  function closeHelp() {
+    localStorage.setItem('landl-howto-seen', '1')
+    setShowHelp(false)
+  }
   const listRef = useRef<HTMLDivElement>(null)
   useLiveCache(cid)
 
-  const { data: scene } = useQuery<Scene>({
+  const { data: scene, isError: sceneMissing } = useQuery<Scene>({
     queryKey: ['scenes', sid],
     queryFn: async () => {
       const scenes = await api.get<Scene[]>(`/campaigns/${cid}/scenes`)
@@ -35,6 +43,7 @@ export function GameView() {
       if (!found) throw new ApiError(404, 'Scene not found')
       return found
     },
+    retry: false,
   })
 
   const { data: messages } = useQuery<Message[]>({
@@ -162,6 +171,15 @@ export function GameView() {
       )
   }
 
+  if (sceneMissing) {
+    return (
+      <div className="page-pad">
+        <p className="error-text">This scene no longer exists (it may have been deleted).</p>
+        <Link to={`/campaigns/${cid}`}>← Back to {campaign?.name ?? 'the campaign'}</Link>
+      </div>
+    )
+  }
+
   return (
     <div className="game-view">
       <header className="game-header">
@@ -169,6 +187,7 @@ export function GameView() {
         <h2 className="grow" style={{ margin: 0 }}>
           {scene?.name}
         </h2>
+        {scene?.status === 'archived' && <span className="badge">archived</span>}
         {scene && (
           <span className={`badge badge-mode-${scene.dm_mode}`}>
             {scene.dm_mode === 'ai' ? 'AI DM' : scene.dm_mode}
@@ -214,7 +233,7 @@ export function GameView() {
           ?
         </button>
       </header>
-      {showHelp && <HowToPlay onClose={() => setShowHelp(false)} />}
+      {showHelp && <HowToPlay onClose={closeHelp} />}
 
       <div className="game-body">
         <div className="game-chat">
@@ -284,6 +303,13 @@ const QUICK_ROLLS: [string, string][] = [
   ['d12', '1d12'],
   ['d100', '1d100'],
 ]
+
+// Plain-language hovers for total beginners.
+const DICE_HINTS: Record<string, string> = {
+  d20: 'The main die — most checks and attacks roll this',
+  Advantage: 'Roll two d20s, keep the HIGHER (you have an edge)',
+  Disadvantage: 'Roll two d20s, keep the LOWER (something is working against you)',
+}
 
 function Composer({
   sceneId,
@@ -404,6 +430,7 @@ function Composer({
               key={label}
               type="button"
               disabled={busy}
+              title={DICE_HINTS[label] ?? `Roll ${expression}`}
               onClick={() => quickRoll(expression)}
             >
               {label}

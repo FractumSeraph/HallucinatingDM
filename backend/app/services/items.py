@@ -12,8 +12,15 @@ async def get_or_create_item(
     item_type: str = "",
     source: str = "custom",
 ) -> Item:
+    # Case-insensitive EQUALITY, not a LIKE pattern — item names containing
+    # % or _ ("Potion (50% off)") must not act as wildcards.
+    from sqlalchemy import func
+
     result = await db.execute(
-        select(Item).where(Item.campaign_id == campaign_id, Item.name.ilike(name.strip()))
+        select(Item).where(
+            Item.campaign_id == campaign_id,
+            func.lower(Item.name) == name.strip().lower(),
+        )
     )
     item = result.scalars().first()
     if item:

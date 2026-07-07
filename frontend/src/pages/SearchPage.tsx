@@ -12,14 +12,18 @@ export function SearchPage() {
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<SearchHit[] | null>(null)
   const [busy, setBusy] = useState(false)
+  const [searchError, setSearchError] = useState('')
   useLiveCache(cid)
 
   async function search(e: FormEvent) {
     e.preventDefault()
     if (!query.trim()) return
     setBusy(true)
+    setSearchError('')
     try {
       setHits(await api.get<SearchHit[]>(`/campaigns/${cid}/search?q=${encodeURIComponent(query)}`))
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Search failed — try again.')
     } finally {
       setBusy(false)
     }
@@ -41,6 +45,7 @@ export function SearchPage() {
         </button>
       </form>
 
+      {searchError && <p className="error-text">{searchError}</p>}
       {hits !== null && (
         <div className="col" style={{ marginTop: '1rem' }}>
           {hits.length === 0 && <p className="muted">No matches found.</p>}

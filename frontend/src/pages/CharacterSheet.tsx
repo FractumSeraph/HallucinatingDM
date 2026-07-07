@@ -18,9 +18,10 @@ export function CharacterSheet() {
   const qc = useQueryClient()
   const [error, setError] = useState('')
 
-  const { data: c } = useQuery<Character>({
+  const { data: c, isError: missing } = useQuery<Character>({
     queryKey: ['characters', charId],
     queryFn: () => api.get(`/characters/${charId}`),
+    retry: false,
   })
   const { data: inventory } = useQuery<InventoryItem[]>({
     queryKey: ['characters', charId, 'inventory'],
@@ -38,6 +39,13 @@ export function CharacterSheet() {
     }
   }
 
+  if (missing)
+    return (
+      <div className="page-pad">
+        <p className="error-text">This character no longer exists (deleted or retired?).</p>
+        <Link to={`/campaigns/${cid}`}>← Back to campaign</Link>
+      </div>
+    )
   if (!c) return <div className="page-pad muted">Loading…</div>
 
   const sheet = c.sheet_json as {
@@ -72,8 +80,15 @@ export function CharacterSheet() {
             <button onClick={() => patch({ hp_current: c.hp_max })}>Full heal</button>
           </div>
           <p>
-            <strong>AC</strong> {c.ac} · <strong>Speed</strong> {sheet.speed ?? 30} ft ·{' '}
-            <strong>Prof</strong> +{2 + Math.floor((c.level - 1) / 4)}
+            <strong title="Armor Class — how hard you are to hit. Attacks must roll this or higher.">
+              AC
+            </strong>{' '}
+            {c.ac} · <strong title="How far you can move on your turn">Speed</strong>{' '}
+            {sheet.speed ?? 30} ft ·{' '}
+            <strong title="Proficiency bonus — added to anything you're trained in">
+              Prof
+            </strong>{' '}
+            +{2 + Math.floor((c.level - 1) / 4)}
           </p>
           <LevelUpButton c={c} charId={charId} cid={cid} />
           {c.conditions_json.length > 0 && (
@@ -114,13 +129,13 @@ export function CharacterSheet() {
               </div>
             ))}
           </div>
-          <h4>Saves</h4>
+          <h4 title="Saving throws — dangers you're trained to resist (add your proficiency bonus)">Saves</h4>
           <p className="muted">{c.proficiencies_json.saves?.join(', ').toUpperCase() || '—'}</p>
           <h4>Skills</h4>
           <p className="muted">{c.proficiencies_json.skills?.join(', ') || '—'}</p>
           {Object.keys(c.spell_slots_json).length > 0 && (
             <>
-              <h4>Spell slots</h4>
+              <h4 title="How many spells of each level you can still cast before resting">Spell slots</h4>
               <div className="row" style={{ flexWrap: 'wrap' }}>
                 {Object.entries(c.spell_slots_json).map(([lvl, slot]) => (
                   <span key={lvl} className="badge">
@@ -243,22 +258,35 @@ function InventoryPanel({ charId, items }: { charId: string; items: InventoryIte
     await qc.invalidateQueries({ queryKey: ['characters', charId, 'inventory'] })
   }
 
+  const [invError, setInvError] = useState('')
+
   async function add(e: FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
-    await api.post(`/characters/${charId}/inventory`, { name: name.trim(), quantity: qty })
-    setName('')
-    setQty(1)
-    await refresh()
+    setInvError('')
+    try {
+      await api.post(`/characters/${charId}/inventory`, { name: name.trim(), quantity: qty })
+      setName('')
+      setQty(1)
+      await refresh()
+    } catch (err) {
+      setInvError(err instanceof Error ? err.message : 'Failed to add item')
+    }
   }
 
   async function setQuantity(entryId: string, quantity: number) {
-    await api.patch(`/inventory/${entryId}`, { quantity })
-    await refresh()
+    setInvError('')
+    try {
+      await api.patch(`/inventory/${entryId}`, { quantity })
+      await refresh()
+    } catch (err) {
+      setInvError(err instanceof Error ? err.message : 'Failed to update quantity')
+    }
   }
 
   return (
     <div className="col">
+      {invError && <p className="error-text">{invError}</p>}
       <ul className="plain-list">
         {items.length === 0 && <li className="muted">Empty pockets.</li>}
         {items.map((it) => (

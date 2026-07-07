@@ -380,3 +380,54 @@ async def test_assist_tool_chips_stay_dm_only(app_client):
     assert not any(m["kind"] == "tool_result" for m in msgs)
     assert not any("lock resists" in m["content"] for m in msgs)
     set_provider(None)
+
+
+async def test_retcon_revives_instant_death(app_client):
+    """A retconned overkill blow restores status, not just HP."""
+    campaign, scene, character = await setup_game(app_client, dm_mode="ai")
+    make_mock(
+        [
+            [
+                ToolCall(id="k1", name="update_hp", arguments={"target": "Mira", "delta": -100}),
+                Done(),
+            ],
+            [TextDelta("The blow is fatal."), Done()],
+        ]
+    )
+    from app.ai.dm_agent import run_turn
+
+    await run_turn(scene["id"])
+    body = (await app_client.get(f"/api/v1/characters/{character['id']}")).json()
+    assert body["status"] == "dead"  # overkill ≥ max HP = instant death
+
+    await app_client.post(f"/api/v1/scenes/{scene['id']}/retcon-last-turn")
+    body = (await app_client.get(f"/api/v1/characters/{character['id']}")).json()
+    assert body["status"] == "active"  # revived, not just healed
+    assert body["hp_current"] == character["hp_max"]
+    set_provider(None)
+
+
+async def test_retcon_unstarts_combat(app_client):
+    """Retconning the turn that started a fight deletes the encounter."""
+    campaign, scene, character = await setup_game(app_client, dm_mode="ai")
+    make_mock(
+        [
+            [
+                ToolCall(
+                    id="s1", name="start_combat",
+                    arguments={"participants": ["Mira", "wolf"]},
+                ),
+                Done(),
+            ],
+            [TextDelta("A wolf lunges from the brush!"), Done()],
+        ]
+    )
+    from app.ai.dm_agent import run_turn
+
+    await run_turn(scene["id"])
+    combat = (await app_client.get(f"/api/v1/scenes/{scene['id']}/combat")).json()
+    assert combat["encounter"] is not None
+
+    await app_client.post(f"/api/v1/scenes/{scene['id']}/retcon-last-turn")
+    combat = (await app_client.get(f"/api/v1/scenes/{scene['id']}/combat")).json()
+    assert combat["encounter"] is None  # the fight never happened
