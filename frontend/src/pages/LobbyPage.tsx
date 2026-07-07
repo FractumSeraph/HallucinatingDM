@@ -63,6 +63,25 @@ export function LobbyPage() {
               <li key={m.user_id} className="row">
                 <span className="grow">{m.display_name}</span>
                 <span className={`badge badge-${m.role}`}>{m.role.toUpperCase()}</span>
+                {isDm && m.user_id !== me?.id && m.user_id !== campaign.owner_id && (
+                  <button
+                    className="btn-danger"
+                    title="Remove this player (their characters are retired; they can rejoin with the invite code)"
+                    aria-label={`Remove ${m.display_name}`}
+                    onClick={async () => {
+                      if (!confirm(`Remove ${m.display_name} from the campaign?`)) return
+                      try {
+                        await api.delete(`/campaigns/${cid}/members/${m.user_id}`)
+                      } catch (err) {
+                        alert(err instanceof ApiError ? err.message : 'Remove failed')
+                        return
+                      }
+                      await qc.invalidateQueries({ queryKey: ['campaigns', cid, 'members'] })
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
               </li>
             ))}
           </ul>

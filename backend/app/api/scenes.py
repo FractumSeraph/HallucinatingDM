@@ -72,6 +72,7 @@ class RollRequest(BaseModel):
     expression: str = Field(min_length=1, max_length=60)
     purpose: str = Field(default="raw", max_length=20)
     character_id: str | None = None
+    secret: bool = False  # DM only: roll hidden from players
 
 
 async def _get_scene_for_member(scene_id: str, db, user) -> Scene:
@@ -383,6 +384,27 @@ async def resolve_turn(scene_id: str, db: DbSession, user: CurrentUser) -> dict[
     return {"ok": True}
 
 
+class RestRequest(BaseModel):
+    kind: str = Field(default="long", pattern="^(short|long)$")
+
+
+@router.post("/scenes/{scene_id}/rest")
+async def rest_party(
+    scene_id: str, body: RestRequest, db: DbSession, user: CurrentUser
+) -> dict[str, Any]:
+    """DM calls a short/long rest for the whole party — same 5E rules the AI's
+    rest tool applies (HP, hit dice, spell slots, conditions)."""
+    scene = await db.get(Scene, scene_id)
+    if not scene:
+        raise not_found("Scene")
+    await require_campaign_dm(scene.campaign_id, db, user)
+    campaign = await db.get(Campaign, scene.campaign_id)
+    from app.services.rest_service import apply_rest
+
+    report = await apply_rest(db, campaign, scene, body.kind)
+    return {"kind": body.kind, "party": report}
+
+
 @router.delete("/scenes/{scene_id}")
 async def delete_scene(scene_id: str, db: DbSession, user: CurrentUser) -> dict[str, bool]:
     """Permanently delete a scene and its chat log, rolls, combat history, and
@@ -485,6 +507,8 @@ async def roll_dice(
             raise forbidden("That's not your character")
         roller_name = character.name
 
+    if body.secret and member.role != "dm":
+        raise forbidden("Only the DM rolls in secret")
     try:
         msg, _ = await create_roll_message(
             db,
@@ -495,6 +519,7 @@ async def roll_dice(
             author_type="dm" if member.role == "dm" else "player",
             author_user_id=user.id,
             character_id=body.character_id,
+            visibility="dm" if body.secret else "all",
         )
     except dice_service.DiceError as e:
         raise bad_request(str(e)) from e

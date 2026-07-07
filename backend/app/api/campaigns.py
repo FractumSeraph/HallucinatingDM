@@ -148,6 +148,51 @@ async def delete_campaign(campaign_id: str, db: DbSession, user: CurrentUser) ->
     return {"ok": True}
 
 
+@router.delete("/{campaign_id}/members/{user_id}")
+async def remove_member(
+    campaign_id: str, user_id: str, db: DbSession, user: CurrentUser
+) -> dict[str, bool]:
+    """DM removes a player from the campaign. Their characters are retired
+    (sheets kept) and scene rosters forget them; they can rejoin with the
+    invite code."""
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise not_found("Campaign")
+    await require_campaign_dm(campaign_id, db, user)
+    if user_id == user.id:
+        raise bad_request("You can't remove yourself — delete the campaign instead")
+    if user_id == campaign.owner_id:
+        raise bad_request("The campaign owner can't be removed")
+    member = await get_membership(db, campaign_id, user_id)
+    if not member:
+        raise not_found("Member")
+
+    from app.models import Character, Scene
+
+    characters = list(
+        (
+            await db.execute(
+                select(Character).where(
+                    Character.campaign_id == campaign_id,
+                    Character.user_id == user_id,
+                    Character.status == "active",
+                )
+            )
+        ).scalars()
+    )
+    scenes = list(
+        (await db.execute(select(Scene).where(Scene.campaign_id == campaign_id))).scalars()
+    )
+    for character in characters:
+        character.status = "retired"
+        for scene in scenes:
+            if character.id in (scene.party_json or []):
+                scene.party_json = [c for c in scene.party_json if c != character.id]
+    await db.delete(member)
+    await db.commit()
+    return {"ok": True}
+
+
 class RecapEntry(BaseModel):
     scene_id: str | None
     content: str
